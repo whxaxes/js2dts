@@ -1,0 +1,44 @@
+{
+  "name": "js2dts",
+  "version": "1.0.0",
+  "description": "Generate dts for js",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc -d",
+    "build:w": "tsc -d -w",
+    "release": "del ./dist && npm run build",
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whxaxes/js2dts.git"
+  },
+  "author": "whxaxes <whxaxes@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/whxaxes/js2dts/issues"
+  },
+  "homepage": "https://github.com/whxaxes/js2dts#readme",
+  "dependencies": {
+    "globby": "^8.0.1",
+    "mkdirp": "^0.5.1",
+    "tslib": "^1.9.3",
+    "typescript": "^3.2.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^23.3.12",
+    "@types/chokidar": "^1.7.4",
+    "@types/commander": "^2.12.2",
+    "@types/debug": "^0.0.30",
+    "@types/del": "^3.0.0",
+    "@types/globby": "^6.1.0",
+    "@types/mkdirp": "^0.5.2",
+    "@types/node": "^9.4.5",
+    "del": "^3.0.0",
+    "del-cli": "^1.1.0",
+    "jest": "^23.6.0",
+    "ts-jest": "^23.10.5",
+    "tslint": "^5.9.1",
+    "tslint-config-egg": "^1.0.0"
+  }
+}
