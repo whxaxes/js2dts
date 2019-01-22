@@ -1,12 +1,7 @@
-import fs from 'fs';
 import path from 'path';
-import { generate } from '../dist';
+import { generate } from '../dist/checker';
 
 test('test', () => {
-  const code = fs.readFileSync(path.resolve(__dirname, './fixtures/index.js'), {
-    encoding: 'utf-8',
-  });
-
-  const newCode = generate(code);
+  const newCode = generate(path.resolve(__dirname, './fixtures/index.js'));
   console.info(newCode);
 });
