@@ -1,5 +1,6 @@
 const events = require('events');
 const chokidar = require('chokidar');
+const EventEmitter = events.EventEmitter;
 
 const a = '12332';
 const b = '555';
@@ -9,12 +10,18 @@ function test(b) {
   return 123123;
 }
 
-class Aclub {
+class MyClub {
+  test() {
+
+  }
+}
+
+class Aclub extends MyClub {
   constructor(ctx) {
     this.ctx = ctx;
   }
 
-  abc(bbb = new events.EventEmitter()) {
+  abc(bbb = new EventEmitter()) {
     console.info('saasd');
     return '123'
   }
@@ -44,11 +51,8 @@ function myFn(a = '123', bbb = new events.EventEmitter(), ccc = chokidar.watch()
 //   return ccc;
 // };
 
-
-module.exports = {
-  abc: '111',
-
-  cccc: () => {
-    return new Aclub();
-  }
+const obj = {
+  test: 123,
 }
+
+module.exports = a;

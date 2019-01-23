@@ -1,7 +1,21 @@
 import ts from 'typescript';
-import fs from 'fs';
 import path from 'path';
-import * as dom from 'dts-dom';
+import fs from 'fs';
+import * as dom from './dom';
+let checker: ts.TypeChecker;
+let sourceFile: ts.SourceFile | undefined;
+let aliasTypeNameIndex = 0;
+const declarationList: ts.Node[] = [];
+const declarationDts: string[] = [];
+const dtsFragments: string[] = [];
+const importMap: { [key: string]: { default?: string, list: string[] } } = {};
+const SyntaxKind = ts.SyntaxKind;
+const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
+const typeRoot = path.resolve(nodeModulesRoot, './@types/');
+
+function getTypeAliasName() {
+  return `T${aliasTypeNameIndex++}`;
+}
 
 // each ast node
 export function eachSourceFile(node: ts.Node, cb: (n: ts.Node) => any) {
@@ -23,9 +37,7 @@ export function modifierHas(node: ts.Node, kind) {
 }
 
 // find export node from sourcefile.
-export function findExportNode(code: string) {
-  const sourceFile = ts.createSourceFile('file.ts', code, ts.ScriptTarget.ES2017, true);
-  const cache: Map<ts.__String, ts.Node> = new Map();
+export function findExportNode(sourceFile: ts.SourceFile) {
   const exportNodeList: ts.Node[] = [];
   let exportDefaultNode: ts.Node | undefined;
 
@@ -35,8 +47,8 @@ export function findExportNode(code: string) {
     }
 
     // each node in root scope
-    if (modifierHas(node, ts.SyntaxKind.ExportKeyword)) {
-      if (modifierHas(node, ts.SyntaxKind.DefaultKeyword)) {
+    if (modifierHas(node, SyntaxKind.ExportKeyword)) {
+      if (modifierHas(node, SyntaxKind.DefaultKeyword)) {
         // export default
         exportDefaultNode = node;
       } else {
@@ -49,16 +61,6 @@ export function findExportNode(code: string) {
           exportNodeList.push(node);
         }
       }
-    } else if (ts.isVariableStatement(node)) {
-      // cache variable statement
-      for (const declaration of node.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-          cache.set(declaration.name.escapedText, declaration.initializer);
-        }
-      }
-    } else if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) {
-      // cache function declaration and class declaration
-      cache.set(node.name.escapedText, node);
     } else if (ts.isExportAssignment(node)) {
       // export default {}
       exportDefaultNode = node.expression;
@@ -79,20 +81,9 @@ export function findExportNode(code: string) {
             exportDefaultNode = node.expression.right;
           }
         }
-      } else if (ts.isIdentifier(node.expression.left)) {
-        // let exportData;
-        // exportData = {};
-        // export exportData
-        cache.set(node.expression.left.escapedText, node.expression.right);
       }
     }
   });
-
-  while (exportDefaultNode && ts.isIdentifier(exportDefaultNode) && cache.size) {
-    const mid = cache.get(exportDefaultNode.escapedText);
-    cache.delete(exportDefaultNode.escapedText);
-    exportDefaultNode = mid;
-  }
 
   return {
     exportDefaultNode,
@@ -108,156 +99,465 @@ export function getFunctionName(fn: ts.FunctionLike) {
   return getText(fn.name);
 }
 
-export function guessType(exp: ts.Node) {
-  if (ts.isStringLiteral(exp) || ts.isNoSubstitutionTemplateLiteral(exp)) {
-    // string
-    return dom.type.string;
-  } else if (ts.isNumericLiteral(exp)) {
-    // number
-    return dom.type.number;
-  } else if (ts.isIdentifier(exp)) {
-    // declaration
-    return findDeclarationType(exp.parent, exp);
-  } else if (ts.isBinaryExpression(exp)) {
-    // a + b + c
-    return dom.type.any;
-  } else if (isFunctionType(exp)) {
-    // function type
-    return createFunctionType(exp);
-  } else if (ts.isCallExpression(exp)) {
-    // call expression
-    if (ts.isIdentifier(exp.expression)) {
-      const type = findDeclarationType(exp.expression.parent, exp.expression);
-      if (type && isFunctionTypeDom(type)) {
-        return type.returnType;
-      }
-    }
-  }
-}
-
 export function isFunctionTypeDom(fn: dom.Type): fn is dom.FunctionType {
   const fm = fn as dom.FunctionType;
   return fm.kind === 'function-type';
 }
 
-export function createFunctionType(fn: ts.FunctionDeclaration) {
+// get type dom from typeNode
+export function getTypeDom(typeNode?: ts.TypeNode) {
+  if (!typeNode) return;
+
+  // checker.getTypeFromTypeNode
+
+  switch (typeNode.kind) {
+    case SyntaxKind.StringKeyword:
+      return dom.type.string;
+    case SyntaxKind.NumberKeyword:
+      return dom.type.number;
+    case SyntaxKind.BooleanKeyword:
+      return dom.type.boolean;
+    case SyntaxKind.TrueKeyword:
+      return dom.type.true;
+    case SyntaxKind.FalseKeyword:
+      return dom.type.false;
+    case SyntaxKind.NullKeyword:
+      return dom.type.null;
+    case SyntaxKind.UndefinedKeyword:
+      return dom.type.undefined;
+    case SyntaxKind.VoidKeyword:
+      return dom.type.void;
+    case SyntaxKind.ObjectKeyword:
+      return dom.type.object;
+    case SyntaxKind.TypeQuery:
+      return getTypeQueryTypeDom(typeNode as ts.TypeQueryNode);
+    case SyntaxKind.ArrayType:
+      return getArrayTypeDom(typeNode as ts.ArrayTypeNode);
+    case SyntaxKind.TypeLiteral:
+      return getTypeLiteralTypeDom(typeNode as ts.TypeLiteralNode);
+    case SyntaxKind.TypeReference:
+      return getReferenceTypeDom(typeNode as ts.TypeReferenceNode);
+    case SyntaxKind.UnionType:
+      return getUnionTypeDom(typeNode as ts.UnionTypeNode);
+    case SyntaxKind.IntersectionType:
+      return getIntersectionTypeDom(typeNode as ts.IntersectionTypeNode);
+    case SyntaxKind.FunctionType:
+    case SyntaxKind.ConstructorType:
+      return getFunctionTypeDom(typeNode as ts.FunctionTypeNode);
+    case SyntaxKind.ImportType:
+      return getImportTypeDom(typeNode as ts.ImportTypeNode);
+    case SyntaxKind.AnyKeyword:
+    default:
+      return dom.type.any;
+  }
+}
+
+export function getFunctionTypeDom(typeNode: ts.FunctionTypeNode) {
   return dom.create.functionType(
-    getFunctionParameters(fn.parameters),
-    guessReturnType(fn),
+    getFunctionParametersTypeDom(typeNode.parameters),
+    getTypeDom(typeNode.type) || dom.type.void,
   );
 }
 
-// find declaration type
-export function findDeclarationType(exp: ts.Node, idx: ts.Identifier): dom.Type | undefined {
-  if (!exp) return;
+export function getTypeQueryTypeDom(typeNode: ts.TypeQueryNode) {
+  return dom.create.typeof(getReferenceTypeDomFromEntity(typeNode.exprName));
+}
 
-  if (ts.isBlock(exp) || ts.isSourceFile(exp)) {
-    let declareType;
+export function getTypeLiteralTypeDom(typeNode: ts.TypeLiteralNode) {
+  const members = typeNode.members;
+  const memberList: any[] = [];
+  members.forEach(member => {
+    const name = getText(member.name);
+    const typeDom = getTypeDom((member as any).type);
+    memberList.push(dom.create.property(name, typeDom));
+  });
+  return dom.create.objectType(memberList);
+}
 
-    // find type from declaration
-    for (const statement of exp.statements) {
-      if (ts.isVariableStatement(statement)) {
-        for (const declaration of statement.declarationList.declarations) {
-          // check whether the declaration name is the same.
-          if (getText(declaration.name) === getText(idx) && declaration.initializer) {
-            declareType = guessType(declaration.initializer) || dom.type.any;
-          }
-        }
-      } else if (ts.isFunctionDeclaration(statement) && getText(statement.name) === getText(idx)) {
-        declareType = createFunctionType(statement);
-      }
-    }
+export function getIntersectionTypeDom(typeNode: ts.IntersectionTypeNode) {
+  return dom.create.intersection(typeNode.types.map(node => getTypeDom(node)));
+}
 
-    // type can be override
-    if (declareType) {
-      return declareType;
-    }
-  } else if (isFunctionType(exp)) {
-    // find type from param
-    const params = getFunctionParameters(exp.parameters);
-    for (const param of params) {
-      if (param.name === getText(idx)) {
-        return param.type;
-      }
-    }
+export function getUnionTypeDom(typeNode: ts.UnionTypeNode) {
+  return dom.create.union(typeNode.types.map(node => getTypeDom(node)));
+}
+
+export function getReferenceModule(symbol: ts.Symbol) {
+  const valueDeclaration = symbol.valueDeclaration;
+  const declarationFile = valueDeclaration.getSourceFile().fileName;
+  if (declarationFile === sourceFile!.fileName) {
+    // current module
+    return valueDeclaration;
+  } else if (declarationFile.startsWith(path.dirname(require.resolve('typescript')))) {
+    // build-in module
+    return;
   }
 
-  return findDeclarationType(exp.parent, idx);
+  const modules = checker.getAmbientModules();
+  const names = modules.map(mod => mod.escapedName.toString().replace(/^"|"$/g, ''));
+
+  let index;
+  let declaration: ts.Node = valueDeclaration;
+  while (declaration && !ts.isSourceFile(declaration)) {
+    const name = (declaration as any).name;
+    if (name && ts.isStringLiteral(name)) {
+      index = names.indexOf(name.text);
+      if (index >= 0) break;
+    }
+
+    declaration = declaration.parent;
+  }
+
+  if (index >= 0) {
+    return names[index];
+  }
+
+  return valueDeclaration.getSourceFile();
 }
 
-// is function
-export function isFunctionType(fn: ts.Node): fn is ts.FunctionDeclaration {
-  return ts.isFunctionDeclaration(fn) || ts.isArrowFunction(fn) || ts.isConstructorDeclaration(fn);
+export function getImportTypeDom(typeNode: ts.ImportTypeNode) {
+  if (SyntaxKind.LiteralType === typeNode.argument.kind) {
+    const args = typeNode.argument as ts.LiteralTypeNode;
+    if (ts.isStringLiteral(args.literal)) {
+      const modName = getModNameByPath(args.literal.text);
+      const exportName = collectModuleName(modName);
+      const referenceType = dom.create.namedTypeReference(exportName);
+      if (typeNode.isTypeOf) {
+        return dom.create.typeof(referenceType);
+      }
+      return referenceType;
+    }
+  }
+  return dom.type.any;
 }
 
-export function guessReturnType(fn: ts.FunctionLike) {
-  const typeList: dom.Type[] = [];
-  if (isFunctionType(fn) && fn.body) {
-    fn.body.forEachChild(statement => {
-      if (ts.isReturnStatement(statement) && statement.expression) {
-        const returnType = guessType(statement.expression);
-        if (returnType && !typeList.includes(returnType)) {
-          typeList.push(returnType);
+export function getReturnTypeFromDeclaration(declaration: ts.SignatureDeclaration) {
+  const signature = checker.getSignatureFromDeclaration(declaration);
+  const type = checker.getReturnTypeOfSignature(signature!);
+  return checker.typeToTypeNode(type);
+}
+
+// export function tryAddMemberForDeclaration()
+
+export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
+  const classDeclaration = dom.create.class(getText(node.name));
+  if (node.heritageClauses) {
+    node.heritageClauses.forEach(clause => {
+      if (clause.types.length && clause.token === ts.SyntaxKind.ExtendsKeyword) {
+        const expr = clause.types[0].expression;
+        let typeNode;
+        if (ts.isIdentifier(expr)) {
+          typeNode = getTypeNodeAtLocation(expr);
+        } else if (ts.isPropertyAccessExpression(expr)) {
+          typeNode = getTypeNodeAtLocation(expr.name);
+        }
+
+        if (typeNode && ts.isTypeQueryNode(typeNode)) {
+          const reference = getReferenceTypeDomFromEntity(typeNode.exprName);
+          classDeclaration.baseType = dom.create.class(reference.name);
         }
       }
     });
   }
 
-  if (!typeList.length) {
-    return dom.type.void;
-  } else if (typeList.length > 3) {
-    return dom.type.any;
-  } else {
-    // string | number | etc.
-    return dom.create.union(typeList);
+  eachPropertiesTypeDom<ts.ClassElement>(node.members, (name, member) => {
+    if (ts.isConstructorDeclaration(member)) {
+      // constructor
+      classDeclaration.members.push(
+        dom.create.constructor(getFunctionParametersTypeDom(member.parameters)),
+      );
+
+      return;
+    }
+
+    // skip without property name
+    if (!name) {
+      return;
+    }
+
+    const { typeDom } = getPropertyTypeDom(name, member);
+    if (typeDom) {
+      classDeclaration.members.push(typeDom);
+    }
+  });
+
+  return classDeclaration;
+}
+
+export function eachPropertiesTypeDom<T extends ts.ClassElement | ts.ObjectLiteralElement>(
+  nodeList: ts.NodeArray<T>,
+  callback: (propName: string, d: T, propList: string[]) => void,
+) {
+  const propertyNameList: string[] = [];
+  nodeList.forEach(member => {
+    const propertyName = getText(member.name);
+    if (propertyNameList.includes(propertyName)) {
+      return;
+    }
+
+    propertyNameList.push(propertyName);
+
+    callback(propertyName, member, propertyNameList);
+  });
+}
+
+export function getPropertyTypeDom(name: string, node: ts.Node) {
+  let flag;
+  if (modifierHas(node, SyntaxKind.StaticKeyword)) {
+    flag = dom.DeclarationFlags.Static;
+  }
+
+  let typeDom;
+  if (ts.isMethodDeclaration(node)) {
+    // method property
+    const typeNode = getReturnTypeFromDeclaration(node);
+    typeDom = dom.create.method(
+      name,
+      getFunctionParametersTypeDom(node.parameters),
+      getTypeDom(typeNode),
+      flag,
+    );
+  } else if (ts.isGetAccessorDeclaration(node)) {
+    const typeNode = getTypeNodeAtLocation(node);
+    typeDom = dom.create.property(name, getTypeDom(typeNode), flag);
+  } else if (ts.isPropertyDeclaration(node)) {
+    typeDom = dom.create.property(name, getTypeDom(node.type), flag);
+  }
+
+  return {
+    typeDom,
+    flag,
+  };
+}
+
+export function getPropertyList(node: ts.ObjectLiteralExpression) {
+  const propertyList: any[] = [];
+  eachPropertiesTypeDom<ts.ObjectLiteralElement>(node.properties, (name, member) => {
+    if (!name) return;
+
+    const { typeDom, flag } = getPropertyTypeDom(name, member);
+    if (typeDom) {
+      propertyList.push(typeDom);
+    } else if (ts.isPropertyAssignment(member)) {
+      const typeNode = getTypeNodeAtLocation(member);
+      const prop = dom.create.property(name, getTypeDom(typeNode), flag);
+      propertyList.push(prop);
+    }
+  });
+  return propertyList;
+}
+
+export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
+  const interfaceName = getText(node);
+  const referenceModule = getReferenceModule((node as any).symbol);
+  if (referenceModule) {
+    if (typeof referenceModule === 'string') {
+      collectModuleName(referenceModule, interfaceName);
+    } else if (ts.isSourceFile(referenceModule)) {
+      const modName = getModNameByPath(referenceModule.fileName);
+      collectModuleName(modName, interfaceName);
+    } else {
+      addDeclarations(referenceModule);
+    }
+  }
+  return dom.create.namedTypeReference(interfaceName);
+}
+
+export function getReferenceTypeDom(typeNode: ts.TypeReferenceNode) {
+  const namedTypeReference = getReferenceTypeDomFromEntity(typeNode.typeName);
+  const typeArguments = (typeNode as any).typeArguments;
+  if (typeArguments && typeArguments.length) {
+    const genericTypes: string[] = [];
+    (typeNode as any).typeArguments.forEach(type => {
+      const typeDom = getTypeDom(type);
+      if (typeof typeDom === 'string') {
+        genericTypes.push(typeDom);
+      } else {
+        const writer = dom.getWriter(typeDom);
+        writer.writeReference(typeDom);
+        genericTypes.push(writer.output);
+      }
+    });
+    namedTypeReference.name = `${namedTypeReference.name}<${genericTypes.join(', ')}>`;
+  }
+  return namedTypeReference;
+}
+
+export function getArrayTypeDom(typeNode: ts.ArrayTypeNode) {
+  return dom.create.array(getTypeDom(typeNode.elementType));
+}
+
+export function addDeclarations(node: ts.Declaration) {
+  if (!declarationList.includes(node)) {
+    declarationList.push(node);
   }
 }
 
-export function getFunctionParameters(parameters: ts.NodeArray<ts.ParameterDeclaration>) {
-  const params: dom.Parameter[] = [];
-
-  parameters.forEach(param => {
-    let paramType;
-    let flag;
-    if (param.initializer) {
-      const type = guessType(param.initializer);
-      if (type) {
-        flag = dom.ParameterFlags.Optional;
-        paramType = type;
-      }
+export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.ParameterDeclaration>) {
+  const params: dom.Parameter[] = parameters.map(param => {
+    let type = param.type;
+    if (!type) {
+      type = getTypeNodeAtLocation(param);
     }
 
-    const p = dom.create.parameter(
+    return dom.create.parameter(
       getText(param.name),
-      paramType || dom.type.any,
-      flag,
+      getTypeDom(type) || dom.type.any,
+      param.initializer ? dom.ParameterFlags.Optional : undefined,
     );
-
-    params.push(p);
   });
 
   return params;
 }
 
+export function getFunctionLikeTypeDom(node: ts.FunctionLike, fnName?: string) {
+  const signature = checker.getSignatureFromDeclaration(node)!;
+  const returnType = checker.getReturnTypeOfSignature(signature);
+  const returnTypeNode = checker.typeToTypeNode(returnType, undefined, ts.NodeBuilderFlags.AllowNodeModulesRelativePaths);
+  const parameterDom = getFunctionParametersTypeDom(node.parameters);
+  const returnTypeDom = getTypeDom(returnTypeNode) || dom.type.any;
+  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+    return dom.create.function(
+      fnName || getText(node.name),
+      parameterDom,
+      returnTypeDom,
+    );
+  }
+}
+
+export function getModNameByPath(fileName: string) {
+  const extname = path.extname(fileName);
+  fileName = extname ? fileName : `${fileName}.d.ts`;
+  const dir = path.dirname(fileName);
+  const basename = path.basename(fileName, '.d.ts');
+
+  if (fileName.startsWith(nodeModulesRoot)) {
+    const modRoot = fileName.startsWith(typeRoot) ? typeRoot : nodeModulesRoot;
+    const pkgPath = path.resolve(dir, './package.json');
+    const pkgInfo = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath).toString()) : {};
+    let modName = dir.substring(modRoot.length + 1);
+
+    if (fileName !== path.resolve(dir, pkgInfo.types || './index.d.ts')) {
+      modName = `${modName}/${basename}`;
+    }
+
+    return modName;
+  } else {
+    const sourceFileDir = path.dirname(sourceFile!.fileName);
+    return path.relative(sourceFileDir, fileName);
+  }
+}
+
+function collectModuleName(name: string, exportName?: string) {
+  const exportObj = importMap[name] = importMap[name] || { default: undefined, list: [] };
+  if (exportName && !exportObj.list.includes(exportName)) {
+    exportObj.list.push(exportName);
+  } else if (!exportName) {
+    if (!exportObj.default) {
+      exportObj.default = name;
+    }
+
+    exportName = exportObj.default;
+  }
+  return exportName;
+}
+
+export function getTypeNodeAtLocation(node: ts.Node, flag: ts.NodeBuilderFlags = ts.NodeBuilderFlags.AllowNodeModulesRelativePaths) {
+  const type = checker.getTypeAtLocation(node);
+  return checker.typeToTypeNode(type, undefined, flag);
+}
+
 export function generate(file: string) {
-  const baseName = path.basename(file, path.extname(file));
-  const code = fs.readFileSync(file, {
-    encoding: 'utf-8',
+  const defaultExportName = 'ExportDefaultElement';
+  const program = ts.createProgram([ file ], {
+    target: ts.ScriptTarget.ES2017,
+    module: ts.ModuleKind.CommonJS,
+    allowJs: true,
   });
 
-  const { exportDefaultNode } = findExportNode(code);
-  if (exportDefaultNode) {
-    if (ts.isFunctionLike(exportDefaultNode)) {
-      const fn = dom.create.function(
-        getFunctionName(exportDefaultNode) || baseName,
-        getFunctionParameters(exportDefaultNode.parameters),
-        guessReturnType(exportDefaultNode),
-      );
+  // cache checker and sourceFile
+  checker = program.getTypeChecker();
+  sourceFile = program.getSourceFile(file);
+  if (!sourceFile) {
+    return;
+  }
 
-      console.info(dom.emit(fn));
+  dtsFragments.length = 0;
+  declarationDts.length = 0;
+
+  // check node
+  const { exportDefaultNode } = findExportNode(sourceFile);
+  let exportDefaultName: string | undefined;
+  if (exportDefaultNode) {
+    if (ts.isIdentifier(exportDefaultNode)) {
+      const symbol = checker.getSymbolAtLocation(exportDefaultNode)!;
+      if (symbol.valueDeclaration.getSourceFile().fileName !== sourceFile.fileName) {
+        // not the same module
+      } else {
+        symbol.declarations.forEach(addDeclarations);
+      }
+
+      exportDefaultName = exportDefaultNode.getText();
+    } else if (ts.isClassLike(exportDefaultNode)) {
+      addDeclarations(exportDefaultNode);
+      exportDefaultName = getText(exportDefaultNode.name);
+    } else if (ts.isFunctionLike(exportDefaultNode)) {
+      exportDefaultNode.name = getText(exportDefaultNode.name)
+        ? exportDefaultNode.name
+        : ts.createIdentifier(defaultExportName);
+
+      addDeclarations(exportDefaultNode);
+      exportDefaultName = getText(exportDefaultNode.name);
+    } else if (ts.isObjectLiteralExpression(exportDefaultNode)) {
+      const propList = getPropertyList(exportDefaultNode);
+      const interfaceTypeDom = dom.create.interface(defaultExportName);
+      interfaceTypeDom.members = propList;
+      exportDefaultName = defaultExportName;
+      declarationDts.push(dom.emit(interfaceTypeDom));
     }
   }
+
+  if (exportDefaultName) {
+    dtsFragments.push(dom.emit(dom.create.exportEquals(exportDefaultName)));
+  }
+
+  // declaration list
+  while (declarationList.length) {
+    const declaration = declarationList.pop()!;
+    if (ts.isClassLike(declaration)) {
+      const classDeclaration = getClassLikeTypeDom(declaration);
+      declarationDts.push(dom.emit(classDeclaration));
+    } else if (ts.isFunctionLike(declaration)) {
+      const functionDeclaration = getFunctionLikeTypeDom(declaration)!;
+      declarationDts.push(dom.emit(functionDeclaration));
+    }
+  }
+
+  // import list
+  const importDeclarations: string[] = [];
+  Object.keys(importMap).forEach(k => {
+    const obj = importMap[k];
+
+    // import * as xx
+    if (obj.default) {
+      importDeclarations.push(`import * as ${obj.default} from '${k}';`);
+    }
+
+    // import { xx } from 'xx';
+    if (obj.list.length) {
+      importDeclarations.push(`import { ${obj.list.join(', ')} } from '${k}';`);
+    }
+  });
+
+  let dts = '';
+  if (importDeclarations.length) {
+    dts += importDeclarations.join('\n') + '\n\n';
+  }
+  dts += declarationDts.join('');
+  dts += dtsFragments.join('');
+  dts += '\n\n\n';
+
+  return dts;
   // const d = dom.create.function('abc', [], dom.type.string);
   // console.info(dom.emit(d));
-  return code;
 }
