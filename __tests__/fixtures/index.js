@@ -53,6 +53,18 @@ function myFn(a = '123', bbb = new events.EventEmitter(), ccc = chokidar.watch()
 
 const obj = {
   test: 123,
+  aaaa: String(123123),
+
+  async getFn() {
+    return this;
+  }
+
+  async bbb() {
+    // return this;
+    return async () => {
+      return myFn;
+    }
+  }
 }
 
-module.exports = a;
+module.exports = obj;

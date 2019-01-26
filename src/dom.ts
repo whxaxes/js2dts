@@ -99,8 +99,7 @@ export interface ImportAllDeclaration extends DeclarationBase {
 
 export interface ImportNamedDeclaration extends DeclarationBase {
   kind: 'importNamed';
-  name: string;
-  as?: string;
+  names: Array<{ name: string; as?: string; }>;
   from: string;
 }
 
@@ -197,6 +196,7 @@ export interface ArrayTypeReference {
 export interface NamedTypeReference {
   kind: 'name';
   name: string;
+  typeParameters: TypeParameter[];
 }
 
 export interface TypeofReference {
@@ -554,6 +554,7 @@ export const create = {
     return {
       kind: 'name',
       name,
+      typeParameters: [],
     };
   },
 
@@ -603,12 +604,11 @@ export const create = {
     };
   },
 
-  importNamed(name: string, as: string, from?: string): ImportNamedDeclaration {
+  importNamed(names: Array<{ name: string; as?: string }>, from: string): ImportNamedDeclaration {
     return {
       kind: 'importNamed',
-      name,
-      as: typeof from !== 'undefined' ? as : undefined,
-      from: typeof from !== 'undefined' ? from : as,
+      names,
+      from,
     };
   },
 
@@ -812,6 +812,7 @@ export function never(_x: never, err: string): never {
 export interface EmitOptions {
   rootFlags?: ContextFlags;
   tripleSlashDirectives?: TripleSlashDirective[];
+  indent?: number;
 }
 
 export function getWriter(
@@ -819,10 +820,11 @@ export function getWriter(
   {
     rootFlags = ContextFlags.None,
     tripleSlashDirectives = [],
+    indent = 0,
   }: EmitOptions = {},
 ) {
   let output = '';
-  let indentLevel = 0;
+  let indentLevel = indent;
 
   const isModuleWithModuleFlag =
     rootDecl.kind === 'module' && rootFlags === ContextFlags.Module;
@@ -1093,9 +1095,13 @@ export function getWriter(
         case 'type-parameter':
         case 'class':
         case 'interface':
-        case 'name':
         case 'alias':
           print(e.name);
+          break;
+
+        case 'name':
+          print(e.name);
+          writeTypeParameters(e.typeParameters);
           break;
 
         case 'array':
@@ -1152,7 +1158,7 @@ export function getWriter(
     for (const p of params) {
       if (!first) print(', ');
 
-      print(p.name);
+      writeReference(p);
 
       if (p.baseType) {
         print(' extends ');
@@ -1187,7 +1193,7 @@ export function getWriter(
     print('(');
     writeDelimited(f.parameters, ', ', writeParameter);
     print(')');
-    print('=>');
+    print(' => ');
     writeReference(f.returnType);
   }
 
@@ -1394,11 +1400,9 @@ export function getWriter(
   }
 
   function writeImportNamed(i: ImportNamedDeclaration) {
-    start(`import {${i.name}`);
-    if (i.as) {
-      print(` as ${i.as}`);
-    }
-    print(`} from '${i.from}';`);
+    start('import { ');
+    print(i.names.map(obj => (`${obj.name}${ obj.as ? ` as ${obj.as}` : '' }`)).join(', '));
+    print(` } from '${i.from}';`);
     newline();
   }
 
@@ -1529,12 +1533,9 @@ export function getWriter(
 
 export function emit(
   rootDecl: TopLevelDeclaration,
-  {
-    rootFlags = ContextFlags.None,
-    tripleSlashDirectives = [],
-  }: EmitOptions = {},
+  options: EmitOptions = {},
 ): string {
-  const writer = getWriter(rootDecl, { rootFlags, tripleSlashDirectives });
+  const writer = getWriter(rootDecl, options);
   writer.writeDeclaration(rootDecl);
   return writer.output;
 }

@@ -4,18 +4,13 @@ import fs from 'fs';
 import * as dom from './dom';
 let checker: ts.TypeChecker;
 let sourceFile: ts.SourceFile | undefined;
-let aliasTypeNameIndex = 0;
 const declarationList: ts.Node[] = [];
-const declarationDts: string[] = [];
+const declarationDts: dom.TopLevelDeclaration[] = [];
 const dtsFragments: string[] = [];
 const importMap: { [key: string]: { default?: string, list: string[] } } = {};
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
 const typeRoot = path.resolve(nodeModulesRoot, './@types/');
-
-function getTypeAliasName() {
-  return `T${aliasTypeNameIndex++}`;
-}
 
 // each ast node
 export function eachSourceFile(node: ts.Node, cb: (n: ts.Node) => any) {
@@ -160,7 +155,8 @@ export function getFunctionTypeDom(typeNode: ts.FunctionTypeNode) {
 }
 
 export function getTypeQueryTypeDom(typeNode: ts.TypeQueryNode) {
-  return dom.create.typeof(getReferenceTypeDomFromEntity(typeNode.exprName));
+  const returnTypeDom = getReferenceTypeDomFromEntity(typeNode.exprName);
+  return returnTypeDom ? dom.create.typeof(returnTypeDom) : dom.type.any;
 }
 
 export function getTypeLiteralTypeDom(typeNode: ts.TypeLiteralNode) {
@@ -168,8 +164,8 @@ export function getTypeLiteralTypeDom(typeNode: ts.TypeLiteralNode) {
   const memberList: any[] = [];
   members.forEach(member => {
     const name = getText(member.name);
-    const typeDom = getTypeDom((member as any).type);
-    memberList.push(dom.create.property(name, typeDom));
+    const { typeDom } = getPropertyTypeDom(name, member);
+    if (typeDom) memberList.push(typeDom);
   });
   return dom.create.objectType(memberList);
 }
@@ -183,6 +179,7 @@ export function getUnionTypeDom(typeNode: ts.UnionTypeNode) {
 }
 
 export function getReferenceModule(symbol: ts.Symbol) {
+  if (!symbol) return;
   const valueDeclaration = symbol.valueDeclaration;
   const declarationFile = valueDeclaration.getSourceFile().fileName;
   if (declarationFile === sourceFile!.fileName) {
@@ -232,6 +229,10 @@ export function getImportTypeDom(typeNode: ts.ImportTypeNode) {
 }
 
 export function getReturnTypeFromDeclaration(declaration: ts.SignatureDeclaration) {
+  if (declaration.type) {
+    return declaration.type;
+  }
+
   const signature = checker.getSignatureFromDeclaration(declaration);
   const type = checker.getReturnTypeOfSignature(signature!);
   return checker.typeToTypeNode(type);
@@ -254,7 +255,7 @@ export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
 
         if (typeNode && ts.isTypeQueryNode(typeNode)) {
           const reference = getReferenceTypeDomFromEntity(typeNode.exprName);
-          classDeclaration.baseType = dom.create.class(reference.name);
+          if (reference) classDeclaration.baseType = dom.create.class(reference.name);
         }
       }
     });
@@ -308,7 +309,7 @@ export function getPropertyTypeDom(name: string, node: ts.Node) {
   }
 
   let typeDom;
-  if (ts.isMethodDeclaration(node)) {
+  if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
     // method property
     const typeNode = getReturnTypeFromDeclaration(node);
     typeDom = dom.create.method(
@@ -317,10 +318,10 @@ export function getPropertyTypeDom(name: string, node: ts.Node) {
       getTypeDom(typeNode),
       flag,
     );
-  } else if (ts.isGetAccessorDeclaration(node)) {
+  } else if (ts.isGetAccessorDeclaration(node) || ts.isGetAccessor(node)) {
     const typeNode = getTypeNodeAtLocation(node);
     typeDom = dom.create.property(name, getTypeDom(typeNode), flag);
-  } else if (ts.isPropertyDeclaration(node)) {
+  } else if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node)) {
     typeDom = dom.create.property(name, getTypeDom(node.type), flag);
   }
 
@@ -349,7 +350,10 @@ export function getPropertyList(node: ts.ObjectLiteralExpression) {
 
 export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
   const interfaceName = getText(node);
-  const referenceModule = getReferenceModule((node as any).symbol);
+  const symbol = (node as any).symbol;
+  if (!symbol) return;
+
+  const referenceModule = getReferenceModule(symbol);
   if (referenceModule) {
     if (typeof referenceModule === 'string') {
       collectModuleName(referenceModule, interfaceName);
@@ -360,27 +364,18 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
       addDeclarations(referenceModule);
     }
   }
+
   return dom.create.namedTypeReference(interfaceName);
 }
 
 export function getReferenceTypeDom(typeNode: ts.TypeReferenceNode) {
-  const namedTypeReference = getReferenceTypeDomFromEntity(typeNode.typeName);
-  const typeArguments = (typeNode as any).typeArguments;
+  const ref = getReferenceTypeDomFromEntity(typeNode.typeName);
+  if (!ref) return dom.type.any;
+  const typeArguments: ts.TypeNode[] = (typeNode as any).typeArguments;
   if (typeArguments && typeArguments.length) {
-    const genericTypes: string[] = [];
-    (typeNode as any).typeArguments.forEach(type => {
-      const typeDom = getTypeDom(type);
-      if (typeof typeDom === 'string') {
-        genericTypes.push(typeDom);
-      } else {
-        const writer = dom.getWriter(typeDom);
-        writer.writeReference(typeDom);
-        genericTypes.push(writer.output);
-      }
-    });
-    namedTypeReference.name = `${namedTypeReference.name}<${genericTypes.join(', ')}>`;
+    ref.typeParameters = typeArguments.map(type => getTypeDom(type) || dom.type.any);
   }
-  return namedTypeReference;
+  return ref;
 }
 
 export function getArrayTypeDom(typeNode: ts.ArrayTypeNode) {
@@ -467,6 +462,12 @@ export function getTypeNodeAtLocation(node: ts.Node, flag: ts.NodeBuilderFlags =
   return checker.typeToTypeNode(type, undefined, flag);
 }
 
+export function getVariableDeclarationTypeDom(node: ts.VariableDeclaration) {
+  const typeNode = getTypeNodeAtLocation(node.name);
+  const typeDom = getTypeDom(typeNode);
+  return dom.create.const(getText(node.name), typeDom);
+}
+
 export function generate(file: string) {
   const defaultExportName = 'ExportDefaultElement';
   const program = ts.createProgram([ file ], {
@@ -513,12 +514,8 @@ export function generate(file: string) {
       const interfaceTypeDom = dom.create.interface(defaultExportName);
       interfaceTypeDom.members = propList;
       exportDefaultName = defaultExportName;
-      declarationDts.push(dom.emit(interfaceTypeDom));
+      declarationDts.push(interfaceTypeDom);
     }
-  }
-
-  if (exportDefaultName) {
-    dtsFragments.push(dom.emit(dom.create.exportEquals(exportDefaultName)));
   }
 
   // declaration list
@@ -526,38 +523,37 @@ export function generate(file: string) {
     const declaration = declarationList.pop()!;
     if (ts.isClassLike(declaration)) {
       const classDeclaration = getClassLikeTypeDom(declaration);
-      declarationDts.push(dom.emit(classDeclaration));
+      declarationDts.push(classDeclaration);
     } else if (ts.isFunctionLike(declaration)) {
       const functionDeclaration = getFunctionLikeTypeDom(declaration)!;
-      declarationDts.push(dom.emit(functionDeclaration));
+      declarationDts.push(functionDeclaration);
+    } else if (ts.isVariableDeclaration(declaration)) {
+      const varDeclaration = getVariableDeclarationTypeDom(declaration);
+      declarationDts.push(varDeclaration);
     }
   }
 
   // import list
-  const importDeclarations: string[] = [];
   Object.keys(importMap).forEach(k => {
     const obj = importMap[k];
 
-    // import * as xx
-    if (obj.default) {
-      importDeclarations.push(`import * as ${obj.default} from '${k}';`);
-    }
-
     // import { xx } from 'xx';
     if (obj.list.length) {
-      importDeclarations.push(`import { ${obj.list.join(', ')} } from '${k}';`);
+      declarationDts.unshift(dom.create.importNamed(obj.list.map(name => ({ name })), k));
+    }
+
+    // import * as xx
+    if (obj.default) {
+      declarationDts.unshift(dom.create.importAll(obj.default, k));
     }
   });
 
-  let dts = '';
-  if (importDeclarations.length) {
-    dts += importDeclarations.join('\n') + '\n\n';
+  // export =
+  if (exportDefaultName) {
+    declarationDts.push(dom.create.exportEquals(exportDefaultName));
   }
-  dts += declarationDts.join('');
-  dts += dtsFragments.join('');
-  dts += '\n\n\n';
 
-  return dts;
-  // const d = dom.create.function('abc', [], dom.type.string);
-  // console.info(dom.emit(d));
+  return declarationDts
+    .map(dts => dom.emit(dts))
+    .join('');
 }
