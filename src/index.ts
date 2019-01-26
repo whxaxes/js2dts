@@ -6,7 +6,6 @@ let checker: ts.TypeChecker;
 let sourceFile: ts.SourceFile | undefined;
 const declarationList: ts.Node[] = [];
 const declarationDts: dom.TopLevelDeclaration[] = [];
-const dtsFragments: string[] = [];
 const importMap: { [key: string]: { default?: string, list: string[] } } = {};
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
@@ -483,7 +482,6 @@ export function generate(file: string) {
     return;
   }
 
-  dtsFragments.length = 0;
   declarationDts.length = 0;
 
   // check node
