@@ -10,6 +10,7 @@ const importMap: { [key: string]: { default?: string, list: string[] } } = {};
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
 const typeRoot = path.resolve(nodeModulesRoot, './@types/');
+dom.config.wrapJsDocComments = false;
 
 // each ast node
 export function eachSourceFile(node: ts.Node, cb: (n: ts.Node) => any) {
@@ -158,13 +159,31 @@ export function getTypeQueryTypeDom(typeNode: ts.TypeQueryNode) {
   return returnTypeDom ? dom.create.typeof(returnTypeDom) : dom.type.any;
 }
 
+export function getSymbol(node: ts.Node): ts.Symbol | undefined {
+  return (node as any).symbol;
+}
+
+export function getJSDoc(node: ts.Node): ts.JSDoc[] | undefined {
+  return (node as any).jsDoc;
+}
+
 export function getTypeLiteralTypeDom(typeNode: ts.TypeLiteralNode) {
   const members = typeNode.members;
   const memberList: any[] = [];
   members.forEach(member => {
+    if (!member.name) return;
     const name = getText(member.name);
     const { typeDom } = getPropertyTypeDom(name, member);
-    if (typeDom) memberList.push(typeDom);
+
+    if (typeDom) {
+      const symbol = getSymbol(member.name);
+      if (symbol) {
+        const jsDoc = getJSDocPlain(symbol.valueDeclaration);
+        typeDom.jsDocComment = jsDoc;
+      }
+
+      memberList.push(typeDom);
+    }
   });
   return dom.create.objectType(memberList);
 }
@@ -178,7 +197,7 @@ export function getUnionTypeDom(typeNode: ts.UnionTypeNode) {
 }
 
 export function getReferenceModule(symbol: ts.Symbol) {
-  if (!symbol) return;
+  if (!symbol || !symbol.valueDeclaration) return;
   const valueDeclaration = symbol.valueDeclaration;
   const declarationFile = valueDeclaration.getSourceFile().fileName;
   if (declarationFile === sourceFile!.fileName) {
@@ -233,11 +252,13 @@ export function getReturnTypeFromDeclaration(declaration: ts.SignatureDeclaratio
   }
 
   const signature = checker.getSignatureFromDeclaration(declaration);
+  if (!signature) {
+    return;
+  }
+
   const type = checker.getReturnTypeOfSignature(signature!);
   return checker.typeToTypeNode(type);
 }
-
-// export function tryAddMemberForDeclaration()
 
 export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
   const classDeclaration = dom.create.class(getText(node.name));
@@ -307,14 +328,14 @@ export function getPropertyTypeDom(name: string, node: ts.Node) {
     flag = dom.DeclarationFlags.Static;
   }
 
-  let typeDom;
+  let typeDom: dom.ClassMember | undefined;
   if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
     // method property
     const typeNode = getReturnTypeFromDeclaration(node);
     typeDom = dom.create.method(
       name,
       getFunctionParametersTypeDom(node.parameters),
-      getTypeDom(typeNode),
+      typeNode ? getTypeDom(typeNode) : dom.type.any,
       flag,
     );
   } else if (ts.isGetAccessorDeclaration(node) || ts.isGetAccessor(node)) {
@@ -349,7 +370,7 @@ export function getPropertyList(node: ts.ObjectLiteralExpression) {
 
 export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
   const interfaceName = getText(node);
-  const symbol = (node as any).symbol;
+  const symbol = getSymbol(node);
   if (!symbol) return;
 
   const referenceModule = getReferenceModule(symbol);
@@ -459,6 +480,14 @@ function collectModuleName(name: string, exportName?: string) {
 export function getTypeNodeAtLocation(node: ts.Node, flag: ts.NodeBuilderFlags = ts.NodeBuilderFlags.AllowNodeModulesRelativePaths) {
   const type = checker.getTypeAtLocation(node);
   return checker.typeToTypeNode(type, undefined, flag);
+}
+
+export function getJSDocPlain(node: ts.Node) {
+  const jsDocs = getJSDoc(node);
+  const jsDoc = jsDocs && jsDocs[0];
+  return jsDoc
+    ? node.getFullText().substring(jsDoc.pos - node.pos, jsDoc.end - node.pos)
+    : undefined;
 }
 
 export function getVariableDeclarationTypeDom(node: ts.VariableDeclaration) {

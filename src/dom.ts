@@ -979,7 +979,10 @@ export function getWriter(
         }
         start(' */');
       } else {
-        start(decl.jsDocComment);
+        for (const line of decl.jsDocComment.split(/\r?\n/g)) {
+          print('\n');
+          start(line.replace(/^ */, ''));
+        }
       }
 
       newline();

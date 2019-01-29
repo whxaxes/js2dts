@@ -4,10 +4,20 @@ import { EventEmitter } from 'events';
 declare const obj: {
     test: number;
     aaaa: string;
-    getFn(): Promise<{
+
+    /**
+    * 666
+    * @param {String} bbb asd
+    */
+    getFn(bbb: string): Promise<{
         test: number;
         aaaa: string;
-        getFn(): Promise<any>;
+
+        /**
+        * 666
+        * @param {String} bbb asd
+        */
+        getFn(bbb: string): Promise<any>;
         bbb(): Promise<() => Promise<(a: string, bbb: EventEmitter, ccc: FSWatcher) => typeof chokidar>>;
     }>;
     bbb(): Promise<any>;
