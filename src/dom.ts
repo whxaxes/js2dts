@@ -1002,13 +1002,15 @@ export function getWriter(
 
   function printObjectTypeMembers(members: ObjectTypeMember[]) {
     print('{');
-    newline();
-    indentLevel++;
-    for (const member of members) {
-      printMember(member);
+    if (members.length) {
+      newline();
+      indentLevel++;
+      for (const member of members) {
+        printMember(member);
+      }
+      indentLevel--;
+      tab();
     }
-    indentLevel--;
-    tab();
     print('}');
 
     function printMember(member: ObjectTypeMember) {

@@ -10,7 +10,12 @@ const importMap: { [key: string]: { default?: string, list: string[] } } = {};
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
 const typeRoot = path.resolve(nodeModulesRoot, './@types/');
+
+// no need to wrap jsdoc with comments
 dom.config.wrapJsDocComments = false;
+
+// default build flag
+const defaultBuildFlag = ts.NodeBuilderFlags.AllowNodeModulesRelativePaths | ts.NodeBuilderFlags.NoTruncation;
 
 // each ast node
 export function eachSourceFile(node: ts.Node, cb: (n: ts.Node) => any) {
@@ -257,7 +262,7 @@ export function getReturnTypeFromDeclaration(declaration: ts.SignatureDeclaratio
   }
 
   const type = checker.getReturnTypeOfSignature(signature!);
-  return checker.typeToTypeNode(type);
+  return checker.typeToTypeNode(type, undefined, defaultBuildFlag);
 }
 
 export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
@@ -329,20 +334,22 @@ export function getPropertyTypeDom(name: string, node: ts.Node) {
   }
 
   let typeDom: dom.ClassMember | undefined;
-  if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
-    // method property
-    const typeNode = getReturnTypeFromDeclaration(node);
-    typeDom = dom.create.method(
-      name,
-      getFunctionParametersTypeDom(node.parameters),
-      typeNode ? getTypeDom(typeNode) : dom.type.any,
-      flag,
-    );
-  } else if (ts.isGetAccessorDeclaration(node) || ts.isGetAccessor(node)) {
-    const typeNode = getTypeNodeAtLocation(node);
-    typeDom = dom.create.property(name, getTypeDom(typeNode), flag);
-  } else if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node)) {
-    typeDom = dom.create.property(name, getTypeDom(node.type), flag);
+  if (name !== '...') {
+    if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
+      // method property
+      const typeNode = getReturnTypeFromDeclaration(node);
+      typeDom = dom.create.method(
+        name,
+        getFunctionParametersTypeDom(node.parameters),
+        typeNode ? getTypeDom(typeNode) : dom.type.any,
+        flag,
+      );
+    } else if (ts.isGetAccessorDeclaration(node) || ts.isGetAccessor(node)) {
+      const typeNode = getTypeNodeAtLocation(node);
+      typeDom = dom.create.property(name, getTypeDom(typeNode), flag);
+    } else if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node)) {
+      typeDom = dom.create.property(name, getTypeDom(node.type), flag);
+    }
   }
 
   return {
@@ -428,7 +435,7 @@ export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.Paramet
 export function getFunctionLikeTypeDom(node: ts.FunctionLike, fnName?: string) {
   const signature = checker.getSignatureFromDeclaration(node)!;
   const returnType = checker.getReturnTypeOfSignature(signature);
-  const returnTypeNode = checker.typeToTypeNode(returnType, undefined, ts.NodeBuilderFlags.AllowNodeModulesRelativePaths);
+  const returnTypeNode = checker.typeToTypeNode(returnType, undefined, defaultBuildFlag);
   const parameterDom = getFunctionParametersTypeDom(node.parameters);
   const returnTypeDom = getTypeDom(returnTypeNode) || dom.type.any;
   if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
@@ -477,9 +484,9 @@ function collectModuleName(name: string, exportName?: string) {
   return exportName;
 }
 
-export function getTypeNodeAtLocation(node: ts.Node, flag: ts.NodeBuilderFlags = ts.NodeBuilderFlags.AllowNodeModulesRelativePaths) {
+export function getTypeNodeAtLocation(node: ts.Node, flag?: ts.NodeBuilderFlags) {
   const type = checker.getTypeAtLocation(node);
-  return checker.typeToTypeNode(type, undefined, flag);
+  return checker.typeToTypeNode(type, undefined, flag || defaultBuildFlag);
 }
 
 export function getJSDocPlain(node: ts.Node) {
@@ -502,6 +509,7 @@ export function generate(file: string) {
     target: ts.ScriptTarget.ES2017,
     module: ts.ModuleKind.CommonJS,
     allowJs: true,
+    noErrorTruncation: true,
   });
 
   // cache checker and sourceFile

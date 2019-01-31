@@ -55,15 +55,19 @@ const obj = {
   test: 123,
   aaaa: String(123123),
 
+  ccc: myFn,
+  aaa: myFn,
+  ddd: myFn,
+
   /**
    * 666
    * @param {String} bbb asd
    */
-  async getFn(bbb) {
+  getFn(bbb) {
     return this;
-  }
+  },
 
-  async bbb() {
+  bbb() {
     // return this;
     return async () => {
       return myFn;
