@@ -99,4 +99,8 @@ const obj = {
 //   }
 // }
 
-module.exports = obj;
+// module.exports = 123;
+
+exports.bbb = 123123132;
+exports.aaaaa = () => myFn;
+exports.MyClub = MyClub;

@@ -41,7 +41,7 @@ export function modifierHas(node: ts.Node, kind) {
 
 // find export node from sourcefile.
 export function findExportNode(sourceFile: ts.SourceFile) {
-  const exportNodeList: ts.Node[] = [];
+  const exportNodeList: Array<{ name: string; node: ts.Node }> = [];
   let exportDefaultNode: ts.Node | undefined;
 
   eachSourceFile(sourceFile, node => {
@@ -50,39 +50,27 @@ export function findExportNode(sourceFile: ts.SourceFile) {
     }
 
     // each node in root scope
-    if (modifierHas(node, SyntaxKind.ExportKeyword)) {
-      if (modifierHas(node, SyntaxKind.DefaultKeyword)) {
-        // export default
-        exportDefaultNode = node;
-      } else {
-        // export variable
-        if (ts.isVariableStatement(node)) {
-          node.declarationList.declarations.forEach(declare =>
-            exportNodeList.push(declare),
-          );
-        } else {
-          exportNodeList.push(node);
-        }
-      }
-    } else if (ts.isExportAssignment(node)) {
-      // export default {}
-      exportDefaultNode = node.expression;
-    } else if (ts.isExpressionStatement(node) && ts.isBinaryExpression(node.expression)) {
-      if (ts.isPropertyAccessExpression(node.expression.left)) {
-        const obj = node.expression.left.expression;
-        const prop = node.expression.left.name;
-        if (ts.isIdentifier(obj)) {
-          if (obj.escapedText === 'exports') {
-            // exports.xxx = {}
-            exportNodeList.push(node.expression);
-          } else if (
-            obj.escapedText === 'module' &&
-            ts.isIdentifier(prop) &&
-            prop.escapedText === 'exports'
-          ) {
-            // module.exports = {}
-            exportDefaultNode = node.expression.right;
-          }
+    if (
+      ts.isExpressionStatement(node) &&
+      ts.isBinaryExpression(node.expression) &&
+      ts.isPropertyAccessExpression(node.expression.left)
+    ) {
+      const obj = node.expression.left.expression;
+      const prop = node.expression.left.name;
+      if (ts.isIdentifier(obj)) {
+        if (obj.escapedText === 'exports') {
+          // exports.xxx = {}
+          exportNodeList.push({
+            name: getText(prop),
+            node: node.expression.right,
+          });
+        } else if (
+          obj.escapedText === 'module' &&
+          ts.isIdentifier(prop) &&
+          prop.escapedText === 'exports'
+        ) {
+          // module.exports = {}
+          exportDefaultNode = node.expression.right;
         }
       }
     }
@@ -111,12 +99,12 @@ export function isFunctionTypeDom(fn: dom.Type): fn is dom.FunctionType {
 export function getTypeDom(typeNode?: ts.TypeNode) {
   if (!typeNode) return;
 
-  // checker.getTypeFromTypeNode
-
   switch (typeNode.kind) {
     case SyntaxKind.StringKeyword:
+    case SyntaxKind.StringLiteral:
       return dom.type.string;
     case SyntaxKind.NumberKeyword:
+    case SyntaxKind.LiteralType:
       return dom.type.number;
     case SyntaxKind.BooleanKeyword:
       return dom.type.boolean;
@@ -540,35 +528,34 @@ export function generate(file: string) {
   declarationDts.length = 0;
 
   // check node
-  const { exportDefaultNode } = findExportNode(sourceFile);
+  const { exportDefaultNode, exportNodeList } = findExportNode(sourceFile);
   let exportDefaultName: string | undefined;
   if (exportDefaultNode) {
-    if (ts.isIdentifier(exportDefaultNode)) {
-      const symbol = checker.getSymbolAtLocation(exportDefaultNode)!;
-      if (symbol.valueDeclaration.getSourceFile().fileName !== sourceFile.fileName) {
-        // not the same module
+    exportDefaultName = defaultExportName;
+    const typeNode = getTypeNodeAtLocation(exportDefaultNode);
+    const typeDom = getTypeDom(typeNode) || dom.type.any;
+    if (dom.util.isTypeofReference(typeDom)) {
+      exportDefaultName = typeDom.type.name;
+    } else {
+      declarationDts.push(dom.create.const(defaultExportName, typeDom));
+    }
+  } else if (exportNodeList.length) {
+    exportDefaultName = defaultExportName;
+    const ns = dom.create.namespace(exportDefaultName);
+    exportNodeList.map(({ name, node }) => {
+      const typeNode = getTypeNodeAtLocation(node);
+      const typeDom = getTypeDom(typeNode) || dom.type.any;
+      let memberDom: dom.NamespaceMember;
+      if (dom.util.isFunctionType(typeDom)) {
+        memberDom = dom.create.function(name, typeDom.parameters, typeDom.returnType);
       } else {
-        symbol.declarations.forEach(addDeclarations);
+        memberDom = dom.create.const(name, typeDom);
       }
 
-      exportDefaultName = exportDefaultNode.getText();
-    } else if (ts.isClassLike(exportDefaultNode)) {
-      addDeclarations(exportDefaultNode);
-      exportDefaultName = getText(exportDefaultNode.name);
-    } else if (ts.isFunctionLike(exportDefaultNode)) {
-      exportDefaultNode.name = getText(exportDefaultNode.name)
-        ? exportDefaultNode.name
-        : ts.createIdentifier(defaultExportName);
-
-      addDeclarations(exportDefaultNode);
-      exportDefaultName = getText(exportDefaultNode.name);
-    } else if (ts.isObjectLiteralExpression(exportDefaultNode)) {
-      const propList = getPropertyList(exportDefaultNode);
-      const interfaceTypeDom = dom.create.interface(defaultExportName);
-      interfaceTypeDom.members = propList;
-      exportDefaultName = defaultExportName;
-      declarationDts.push(interfaceTypeDom);
-    }
+      memberDom.flags = dom.DeclarationFlags.Export;
+      ns.members.push(memberDom);
+    });
+    declarationDts.push(ns);
   }
 
   // declaration list

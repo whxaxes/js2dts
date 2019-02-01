@@ -1,32 +1,17 @@
-declare const obj: {
-    test: number;
-    aaaa: string;
+import * as chokidar from 'chokidar';
+import { FSWatcher } from 'chokidar';
+import { EventEmitter } from 'events';
+declare namespace ExportDefaultElement {
+  export const bbb: number;
+  export function aaaaa(): typeof myFn;
+  export const MyClub: typeof MyClub;
+}
+declare class MyClub {
+  test(): void;
+}
 
-    /**
-    * 666
-    * @param {String} bbb asd
-    */
-    getFn(bbb: string): Promise<{
-        test: number;
-        aaaa: string;
-
-        /**
-        * 666
-        * @param {String} bbb asd
-        */
-        getFn(bbb: string): Promise<any>;
-        bbb(): Promise<{
-            test: number;
-            aaaa: string;
-
-            /**
-            * 666
-            * @param {String} bbb asd
-            */
-            getFn(bbb: string): Promise<any>;
-            bbb(): Promise<any>;
-        }>;
-    }>;
-    bbb(): Promise<any>;
-};
-export = obj;
+/**
+* 6666
+*/
+declare function myFn(a?: string, bbb?: EventEmitter, ccc?: FSWatcher): typeof chokidar;
+export = ExportDefaultElement;

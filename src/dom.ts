@@ -2,6 +2,8 @@
  * copy from https://github.com/RyanCavanaugh/dts-dom
  */
 
+const brRegex = /\r?\n/g;
+
 export interface DeclarationBase {
   jsDocComment?: string;
   comment?: string;
@@ -340,7 +342,18 @@ export enum ParameterFlags {
 
 export const config = {
   wrapJsDocComments: true,
+  indentSpace: 2,
   outputEol: '\r\n',
+};
+
+export const util = {
+  isTypeofReference(node: Type): node is TypeofReference {
+    return (node as TypeofReference).kind === 'typeof';
+  },
+
+  isFunctionType(node: Type): node is FunctionType {
+    return (node as FunctionType).kind === 'function-type';
+  },
 };
 
 export const create = {
@@ -825,6 +838,7 @@ export function getWriter(
 ) {
   let output = '';
   let indentLevel = indent;
+  let line = 0;
 
   const isModuleWithModuleFlag =
     rootDecl.kind === 'module' && rootFlags === ContextFlags.Module;
@@ -874,8 +888,9 @@ export function getWriter(
   }
 
   function tab() {
+    const indentSpace = new Array(config.indentSpace + 1).join(' ');
     for (let i = 0; i < indentLevel; i++) {
-      output = output + '    ';
+      output = output + indentSpace;
     }
   }
 
@@ -930,11 +945,11 @@ export function getWriter(
     s: string,
     flags: DeclarationFlags | undefined = DeclarationFlags.None,
   ) {
-    if (getContextFlags() & ContextFlags.InAmbientNamespace) {
+    if (flags & DeclarationFlags.Export) {
+      start(`export ${s}`);
+    } else if (getContextFlags() & ContextFlags.InAmbientNamespace) {
       // Already in an all-export context
       start(s);
-    } else if (flags & DeclarationFlags.Export) {
-      start(`export ${s}`);
     } else if (flags & DeclarationFlags.ExportDefault) {
       start(`export default ${s}`);
     } else if (getContextFlags() & ContextFlags.Module) {
@@ -946,6 +961,7 @@ export function getWriter(
 
   function newline() {
     output = output + config.outputEol;
+    line++;
   }
 
   function needsParens(d: Type) {
@@ -973,14 +989,14 @@ export function getWriter(
       if (config.wrapJsDocComments) {
         start('/**');
         newline();
-        for (const line of decl.jsDocComment.split(/\r?\n/g)) {
+        for (const line of decl.jsDocComment.split(brRegex)) {
           start(` * ${line}`);
           newline();
         }
         start(' */');
       } else {
-        for (const line of decl.jsDocComment.split(/\r?\n/g)) {
-          print('\n');
+        for (const line of decl.jsDocComment.split(brRegex)) {
+          newline();
           start(line.replace(/^ */, ''));
         }
       }
@@ -1268,9 +1284,8 @@ export function getWriter(
     print(' {');
     newline();
     indentLevel++;
-    for (const m of c.members) {
-      writeClassMember(m);
-      newline();
+    for (const member of c.members) {
+      writeClassMember(member);
     }
     indentLevel--;
     start('}');
@@ -1325,7 +1340,6 @@ export function getWriter(
     indentLevel++;
     for (const member of ns.members) {
       writeDeclaration(member);
-      newline();
     }
     indentLevel--;
     start('}');
