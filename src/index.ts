@@ -14,8 +14,11 @@ const typeRoot = path.resolve(nodeModulesRoot, './@types/');
 // no need to wrap jsdoc with comments
 dom.config.wrapJsDocComments = false;
 
-// default build flag
-const defaultBuildFlag = ts.NodeBuilderFlags.AllowNodeModulesRelativePaths | ts.NodeBuilderFlags.NoTruncation;
+// default build flags
+const defaultBuildFlags = ts.NodeBuilderFlags.AllowNodeModulesRelativePaths
+ | ts.NodeBuilderFlags.GenerateNamesForShadowedTypeParams
+ | ts.NodeBuilderFlags.NoTruncation
+ | ts.NodeBuilderFlags.UseTypeOfFunction;
 
 // each ast node
 export function eachSourceFile(node: ts.Node, cb: (n: ts.Node) => any) {
@@ -129,6 +132,8 @@ export function getTypeDom(typeNode?: ts.TypeNode) {
       return dom.type.void;
     case SyntaxKind.ObjectKeyword:
       return dom.type.object;
+    case SyntaxKind.ThisKeyword:
+      return dom.type.this;
     case SyntaxKind.TypeQuery:
       return getTypeQueryTypeDom(typeNode as ts.TypeQueryNode);
     case SyntaxKind.ArrayType:
@@ -179,14 +184,8 @@ export function getTypeLiteralTypeDom(typeNode: ts.TypeLiteralNode) {
     if (!member.name) return;
     const name = getText(member.name);
     const { typeDom } = getPropertyTypeDom(name, member);
-
     if (typeDom) {
-      const symbol = getSymbol(member.name);
-      if (symbol) {
-        const jsDoc = getJSDocPlain(symbol.valueDeclaration);
-        typeDom.jsDocComment = jsDoc;
-      }
-
+      addJsDocToTypeDom(typeDom, member.name);
       memberList.push(typeDom);
     }
   });
@@ -262,11 +261,12 @@ export function getReturnTypeFromDeclaration(declaration: ts.SignatureDeclaratio
   }
 
   const type = checker.getReturnTypeOfSignature(signature!);
-  return checker.typeToTypeNode(type, undefined, defaultBuildFlag);
+  return checker.typeToTypeNode(type, undefined, defaultBuildFlags);
 }
 
 export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
   const classDeclaration = dom.create.class(getText(node.name));
+  addJsDocToTypeDom(classDeclaration, node);
   if (node.heritageClauses) {
     node.heritageClauses.forEach(clause => {
       if (clause.types.length && clause.token === ts.SyntaxKind.ExtendsKeyword) {
@@ -289,10 +289,9 @@ export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
   eachPropertiesTypeDom<ts.ClassElement>(node.members, (name, member) => {
     if (ts.isConstructorDeclaration(member)) {
       // constructor
-      classDeclaration.members.push(
-        dom.create.constructor(getFunctionParametersTypeDom(member.parameters)),
-      );
-
+      const constructorTypeDom = dom.create.constructor(getFunctionParametersTypeDom(member.parameters));
+      addJsDocToTypeDom(constructorTypeDom, member);
+      classDeclaration.members.push(constructorTypeDom);
       return;
     }
 
@@ -303,11 +302,23 @@ export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
 
     const { typeDom } = getPropertyTypeDom(name, member);
     if (typeDom) {
+      addJsDocToTypeDom(typeDom, member);
       classDeclaration.members.push(typeDom);
     }
   });
 
   return classDeclaration;
+}
+
+export function addJsDocToTypeDom(typeDom: dom.DeclarationBase, originalNode: ts.Node) {
+  let jsDoc = getJSDocPlain(originalNode);
+  if (!jsDoc) {
+    const symbol = getSymbol(originalNode);
+    if (symbol && symbol.valueDeclaration) {
+      jsDoc = getJSDocPlain(symbol.valueDeclaration);
+    }
+  }
+  typeDom.jsDocComment = jsDoc;
 }
 
 export function eachPropertiesTypeDom<T extends ts.ClassElement | ts.ObjectLiteralElement>(
@@ -435,16 +446,23 @@ export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.Paramet
 export function getFunctionLikeTypeDom(node: ts.FunctionLike, fnName?: string) {
   const signature = checker.getSignatureFromDeclaration(node)!;
   const returnType = checker.getReturnTypeOfSignature(signature);
-  const returnTypeNode = checker.typeToTypeNode(returnType, undefined, defaultBuildFlag);
+  const returnTypeNode = checker.typeToTypeNode(returnType, undefined, defaultBuildFlags);
   const parameterDom = getFunctionParametersTypeDom(node.parameters);
   const returnTypeDom = getTypeDom(returnTypeNode) || dom.type.any;
+  let typeDom;
   if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
-    return dom.create.function(
+    typeDom = dom.create.function(
       fnName || getText(node.name),
       parameterDom,
       returnTypeDom,
     );
   }
+
+  if (typeDom) {
+    addJsDocToTypeDom(typeDom, node);
+  }
+
+  return typeDom;
 }
 
 export function getModNameByPath(fileName: string) {
@@ -486,7 +504,7 @@ function collectModuleName(name: string, exportName?: string) {
 
 export function getTypeNodeAtLocation(node: ts.Node, flag?: ts.NodeBuilderFlags) {
   const type = checker.getTypeAtLocation(node);
-  return checker.typeToTypeNode(type, undefined, flag || defaultBuildFlag);
+  return checker.typeToTypeNode(type, undefined, flag || defaultBuildFlags);
 }
 
 export function getJSDocPlain(node: ts.Node) {

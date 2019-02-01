@@ -35,6 +35,9 @@ class Aclub extends MyClub {
   }
 }
 
+/**
+ * 6666
+ */
 function myFn(a = '123', bbb = new events.EventEmitter(), ccc = chokidar.watch()) {
   console.info('asdas');
   // return new events.EventEmitter();
@@ -63,16 +66,37 @@ const obj = {
    * 666
    * @param {String} bbb asd
    */
-  getFn(bbb) {
+  async getFn(bbb) {
     return this;
   },
 
-  bbb() {
+  async bbb() {
     // return this;
     return async () => {
       return myFn;
     }
   }
 }
+
+// /**
+//  * @param {string} aa sss
+//  */
+// class Obj {
+//   /**
+//    * 666
+//    * @param {String} abc asd
+//    */
+//   constructor(abc) {
+//     this.bbb = abc;
+//   }
+
+//   /**
+//    * 666
+//    * @param {String} bbb asd
+//    */
+//   async getFn(bbb) {
+//     return this;
+//   }
+// }
 
 module.exports = obj;
