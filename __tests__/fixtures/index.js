@@ -1,5 +1,6 @@
 const events = require('events');
 const chokidar = require('chokidar');
+const fn = require('./other');
 const EventEmitter = events.EventEmitter;
 
 const a = '12332';
@@ -11,6 +12,10 @@ function test(b) {
 }
 
 class MyClub {
+  constructor() {
+    this.abc = '123';
+  }
+
   test() {
 
   }
@@ -101,6 +106,13 @@ const obj = {
 
 // module.exports = 123;
 
-exports.bbb = 123123132;
-exports.aaaaa = () => myFn;
-exports.MyClub = MyClub;
+// exports.bbb = 123123132;
+// exports.aaaaa = () => myFn;
+// exports.MyClub = MyClub;
+
+// const Controller = require('egg').Controller;
+// const fs = require('mz/fs');
+
+module.exports = () => {
+  return new MyClub();
+};

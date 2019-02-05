@@ -354,6 +354,10 @@ export const util = {
   isFunctionType(node: Type): node is FunctionType {
     return (node as FunctionType).kind === 'function-type';
   },
+
+  isConstructorDeclaration(node: DeclarationBase): node is ConstructorDeclaration {
+    return (node as ConstructorDeclaration).kind === 'constructor';
+  },
 };
 
 export const create = {
@@ -838,7 +842,6 @@ export function getWriter(
 ) {
   let output = '';
   let indentLevel = indent;
-  let line = 0;
 
   const isModuleWithModuleFlag =
     rootDecl.kind === 'module' && rootFlags === ContextFlags.Module;
@@ -961,7 +964,6 @@ export function getWriter(
 
   function newline() {
     output = output + config.outputEol;
-    line++;
   }
 
   function needsParens(d: Type) {

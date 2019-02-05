@@ -1,17 +1,7 @@
-import * as chokidar from 'chokidar';
-import { FSWatcher } from 'chokidar';
-import { EventEmitter } from 'events';
-declare namespace ExportDefaultElement {
-  export const bbb: number;
-  export function aaaaa(): typeof myFn;
-  export const MyClub: typeof MyClub;
-}
+declare const T0: () => MyClub;
 declare class MyClub {
+  abc: string;
+  constructor();
   test(): void;
 }
-
-/**
-* 6666
-*/
-declare function myFn(a?: string, bbb?: EventEmitter, ccc?: FSWatcher): typeof chokidar;
-export = ExportDefaultElement;
+export = T0;
