@@ -6,8 +6,8 @@ let uniqId = 0;
 let checker: ts.TypeChecker;
 let sourceFile: ts.SourceFile | undefined;
 let fragments: dom.TopLevelDeclaration[] = [];
-const declarationList: ts.Node[] = [];
-const importMap: { [key: string]: { default?: string, list: string[] } } = {};
+let importMap: { [key: string]: { default?: string, list: string[] } } = {};
+let declarationList: ts.Node[] = [];
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
 const typeRoot = path.resolve(nodeModulesRoot, './@types/');
@@ -590,6 +590,14 @@ export function getVariableDeclarationTypeDom(node: ts.VariableDeclaration) {
   return dom.create.const(getText(node.name), typeDom);
 }
 
+// reset variable
+export function reset() {
+  uniqId = 0;
+  fragments = [];
+  importMap = {};
+  declarationList = [];
+}
+
 export function create(file: string) {
   const program = ts.createProgram([ file ], {
     target: ts.ScriptTarget.ES2017,
@@ -605,9 +613,8 @@ export function create(file: string) {
     return;
   }
 
-  // variable initialization
-  uniqId = 0;
-  fragments = [];
+  // reset variable
+  reset();
 
   // check node
   const { exportDefaultNode, exportNodeList } = findExportNode(sourceFile);

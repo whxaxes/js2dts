@@ -31,12 +31,19 @@ async function checkDts(file: string) {
   if (fs.existsSync(checkerTs)) {
     await coffeeWork(coffee.fork(path.resolve(dir, 'check.js')));
   }
+  return code;
 }
 
-test('normal#object', async () => {
-  await checkDts('normal/object');
-});
+describe('index.test.ts', () => {
+  it('normal#object', async () => {
+    await checkDts('normal/object');
+  });
 
-test('normal#function', async () => {
-  await checkDts('normal/function');
+  it('normal#function', async () => {
+    await checkDts('normal/function');
+  });
+
+  it('normal#function.1', async () => {
+    await checkDts('normal/function.1');
+  });
 });
