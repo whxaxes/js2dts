@@ -2,12 +2,15 @@ import ts from 'typescript';
 import path from 'path';
 import fs from 'fs';
 import * as dom from './dom';
+import { isEqual } from 'lodash';
 let uniqId = 0;
 let checker: ts.TypeChecker;
 let sourceFile: ts.SourceFile | undefined;
 let fragments: dom.TopLevelDeclaration[] = [];
 let importMap: { [key: string]: { default?: string, list: string[] } } = {};
 let declarationList: ts.Node[] = [];
+const cacheDeclarationList: ts.Node[] = [];
+const interfaceList: dom.InterfaceDeclaration[] = [];
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
 const typeRoot = path.resolve(nodeModulesRoot, './@types/');
@@ -24,6 +27,7 @@ const defaultBuildFlags = ts.NodeBuilderFlags.AllowNodeModulesRelativePaths
 interface ExportListObj {
   name: string;
   node: ts.Node;
+  originalNode: ts.Node;
 }
 
 // get name for anonymous type
@@ -79,6 +83,7 @@ export function findExportNode(sourceFile: ts.SourceFile) {
         exportNodeList.push({
           name: getText(prop),
           node: (node.expression as ts.BinaryExpression).right,
+          originalNode: node,
         });
       };
 
@@ -129,18 +134,16 @@ export function getTypeDom(typeNode?: ts.TypeNode) {
     case SyntaxKind.StringLiteral:
       return dom.type.string;
     case SyntaxKind.NumberKeyword:
-    case SyntaxKind.LiteralType:
+    case SyntaxKind.NumericLiteral:
       return dom.type.number;
+    case SyntaxKind.LiteralType:
+      return getLiteralTypeDom(typeNode as ts.LiteralTypeNode);
     case SyntaxKind.BooleanKeyword:
       return dom.type.boolean;
     case SyntaxKind.TrueKeyword:
       return dom.type.true;
     case SyntaxKind.FalseKeyword:
       return dom.type.false;
-    case SyntaxKind.NullKeyword:
-      return dom.type.null;
-    case SyntaxKind.UndefinedKeyword:
-      return dom.type.undefined;
     case SyntaxKind.VoidKeyword:
       return dom.type.void;
     case SyntaxKind.ObjectKeyword:
@@ -165,9 +168,16 @@ export function getTypeDom(typeNode?: ts.TypeNode) {
     case SyntaxKind.ImportType:
       return getImportTypeDom(typeNode as ts.ImportTypeNode);
     case SyntaxKind.AnyKeyword:
+    case SyntaxKind.NullKeyword:
+    case SyntaxKind.UndefinedKeyword:
     default:
       return dom.type.any;
   }
+}
+
+export function getLiteralTypeDom(typeNode: ts.LiteralTypeNode) {
+  const literal = typeNode.literal;
+  return getTypeDom(literal as ts.TypeNode);
 }
 
 export function getFunctionTypeDom(typeNode: ts.FunctionTypeNode) {
@@ -192,17 +202,30 @@ export function getJSDoc(node: ts.Node): ts.JSDoc[] | undefined {
 
 export function getTypeLiteralTypeDom(typeNode: ts.TypeLiteralNode) {
   const members = typeNode.members;
-  const memberList: any[] = [];
+  const interfaceMembers: dom.ObjectTypeMember[] = [];
   members.forEach(member => {
     if (!member.name) return;
     const name = getText(member.name);
     const { typeDom } = getPropertyTypeDom(name, member);
     if (typeDom) {
       addJsDocToTypeDom(typeDom, member.name);
-      memberList.push(typeDom);
+      interfaceMembers.push(typeDom as dom.ObjectTypeMember);
     }
   });
-  return dom.create.objectType(memberList);
+
+  let interfaceName: string | undefined;
+  const existInterface = interfaceList.find(obj => isEqual(obj.members, interfaceMembers));
+  if (!existInterface) {
+    interfaceName = getAnonymousName();
+    const interfaceDeclare = dom.create.interface(interfaceName);
+    interfaceDeclare.members = interfaceMembers;
+    fragments.push(interfaceDeclare);
+    interfaceList.push(interfaceDeclare);
+  } else {
+    interfaceName = existInterface.name;
+  }
+
+  return dom.create.namedTypeReference(interfaceName);
 }
 
 export function getIntersectionTypeDom(typeNode: ts.IntersectionTypeNode) {
@@ -391,6 +414,13 @@ export function getPropertyTypeDom(name: string, node: ts.Node) {
     flag = dom.DeclarationFlags.Static;
   }
 
+  // check optional
+  const checkOptional = (type?: ts.TypeNode) => {
+    if (type && type.kind === SyntaxKind.UndefinedKeyword) {
+      flag |= dom.DeclarationFlags.Optional;
+    }
+  };
+
   let typeDom: dom.ClassMember | undefined;
   if (name !== '...') {
     if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
@@ -403,9 +433,13 @@ export function getPropertyTypeDom(name: string, node: ts.Node) {
         flag,
       );
     } else if (ts.isGetAccessorDeclaration(node) || ts.isGetAccessor(node)) {
+      // getter
       const typeNode = getTypeNodeAtLocation(node);
+      checkOptional(typeNode);
       typeDom = dom.create.property(name, getTypeDom(typeNode), flag);
     } else if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node)) {
+      // property declaration
+      checkOptional(node.type);
       typeDom = dom.create.property(name, getTypeDom(node.type), flag);
     }
   }
@@ -414,23 +448,6 @@ export function getPropertyTypeDom(name: string, node: ts.Node) {
     typeDom,
     flag,
   };
-}
-
-export function getPropertyList(node: ts.ObjectLiteralExpression) {
-  const propertyList: any[] = [];
-  eachPropertiesTypeDom<ts.ObjectLiteralElement>(node.properties, (name, member) => {
-    if (!name) return;
-
-    const { typeDom, flag } = getPropertyTypeDom(name, member);
-    if (typeDom) {
-      propertyList.push(typeDom);
-    } else if (ts.isPropertyAssignment(member)) {
-      const typeNode = getTypeNodeAtLocation(member);
-      const prop = dom.create.property(name, getTypeDom(typeNode), flag);
-      propertyList.push(prop);
-    }
-  });
-  return propertyList;
 }
 
 export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
@@ -478,7 +495,8 @@ export function getArrayTypeDom(typeNode: ts.ArrayTypeNode) {
 }
 
 export function addDeclarations(node: ts.Declaration) {
-  if (!declarationList.includes(node)) {
+  if (!cacheDeclarationList.includes(node)) {
+    cacheDeclarationList.push(node);
     declarationList.push(node);
   }
 }
@@ -596,6 +614,8 @@ export function reset() {
   fragments = [];
   importMap = {};
   declarationList = [];
+  cacheDeclarationList.length = 0;
+  interfaceList.length = 0;
 }
 
 export function create(file: string) {
@@ -623,44 +643,41 @@ export function create(file: string) {
 
   // export default
   if (exportDefaultNode) {
+    exportDefaultName = getAnonymousName();
     const typeNode = getTypeNodeAtLocation(exportDefaultNode);
-    const typeDom = getTypeDom(typeNode) || dom.type.any;
-    if (dom.util.isTypeofReference(typeDom)) {
-      exportNsName = exportDefaultName = typeDom.type.name;
-    } else {
-      exportDefaultName = getAnonymousName();
-      let type = typeDom;
-      if (exportNodeList.length) {
-        exportNsName = getAnonymousName();
-        type = dom.create.intersection([
-          typeDom,
-          dom.create.typeof(dom.create.namedTypeReference(exportNsName)),
-        ]);
-      }
+    let typeDom = getTypeDom(typeNode) || dom.type.any;
 
-      fragments.push(dom.create.const(exportDefaultName, type));
+    if (exportNodeList.length) {
+      exportNsName = getAnonymousName();
+      typeDom = dom.create.intersection([
+        typeDom,
+        dom.create.namedTypeReference(exportNsName),
+      ]);
     }
+
+    fragments.push(dom.create.const(exportDefaultName, typeDom));
   }
 
   // export list
   if (exportNodeList.length) {
     exportNsName = exportNsName || getAnonymousName();
-    const ns = dom.create.namespace(exportNsName);
-    exportNodeList.map(({ name, node }) => {
+    const ns = dom.create.interface(exportNsName);
+    exportNodeList.map(({ name, node, originalNode }) => {
       const typeNode = getTypeNodeAtLocation(node);
       const typeDom = getTypeDom(typeNode) || dom.type.any;
-      let memberDom: dom.NamespaceMember;
-      if (dom.util.isFunctionType(typeDom)) {
-        memberDom = dom.create.function(name, typeDom.parameters, typeDom.returnType);
-      } else {
-        memberDom = dom.create.const(name, typeDom);
-      }
-
-      memberDom.flags = dom.DeclarationFlags.Export;
+      const memberDom: dom.ObjectTypeMember = dom.create.property(name, typeDom);
+      addJsDocToTypeDom(memberDom, originalNode);
       ns.members.push(memberDom);
     });
-
     fragments.push(ns);
+
+    if (!exportDefaultName) {
+      exportDefaultName = getAnonymousName();
+      fragments.push(dom.create.const(
+        exportDefaultName,
+        dom.create.namedTypeReference(exportNsName),
+      ));
+    }
   }
 
   // declaration list

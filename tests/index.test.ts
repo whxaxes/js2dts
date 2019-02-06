@@ -26,10 +26,10 @@ async function checkDts(file: string) {
   const tscFile = require.resolve('typescript/bin/tsc');
   fs.writeFileSync(path.resolve(dir, 'tsconfig.json'), tsconfigPlain);
   fs.writeFileSync(`${jsFile}.d.ts`, code);
-  await coffeeWork(coffee.fork(tscFile, [ '-p', path.resolve(dir, 'tsconfig.json') ]));
+  await coffeeWork(coffee.fork(tscFile, [ '-p', path.resolve(dir, 'tsconfig.json') ], { execArgv: [] }));
   const checkerTs = path.resolve(dir, 'check.js');
   if (fs.existsSync(checkerTs)) {
-    await coffeeWork(coffee.fork(path.resolve(dir, 'check.js')));
+    await coffeeWork(coffee.fork(path.resolve(dir, 'check.js'), [], { execArgv: [] }));
   }
   return code;
 }
@@ -45,5 +45,17 @@ describe('index.test.ts', () => {
 
   it('normal#function.1', async () => {
     await checkDts('normal/function.1');
+  });
+
+  it('normal#class', async () => {
+    await checkDts('normal/class');
+  });
+
+  it('normal#exports', async () => {
+    await checkDts('normal/exports');
+  });
+
+  it('normal#custom', async () => {
+    await checkDts('normal/custom');
   });
 });

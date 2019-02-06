@@ -355,6 +355,22 @@ export const util = {
     return (node as FunctionType).kind === 'function-type';
   },
 
+  isInterfaceDeclaration(node: DeclarationBase): node is InterfaceDeclaration {
+    return (node as InterfaceDeclaration).kind === 'interface';
+  },
+
+  isNamespaceDeclaration(node: DeclarationBase): node is NamespaceDeclaration {
+    return (node as NamespaceDeclaration).kind === 'namespace';
+  },
+
+  isClassDeclaration(node: DeclarationBase): node is ClassDeclaration {
+    return (node as ClassDeclaration).kind === 'class';
+  },
+
+  isObjectType(node: Type): node is ObjectType {
+    return (node as ObjectType).kind === 'object';
+  },
+
   isConstructorDeclaration(node: DeclarationBase): node is ConstructorDeclaration {
     return (node as ConstructorDeclaration).kind === 'constructor';
   },
@@ -997,9 +1013,11 @@ export function getWriter(
         }
         start(' */');
       } else {
+        let lineIndex = 0;
         for (const line of decl.jsDocComment.split(brRegex)) {
           newline();
-          start(line.replace(/^ */, ''));
+          start(line.replace(/^ */, lineIndex === 0 ? '' : ' '));
+          lineIndex++;
         }
       }
 

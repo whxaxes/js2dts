@@ -1,6 +1,7 @@
 {
   "extends": "tslint-config-egg",
   "rules": {
-    "no-bitwise": false
+    "no-bitwise": false,
+    "prefer-for-of": false
   }
 }

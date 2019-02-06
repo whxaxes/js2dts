@@ -5,7 +5,7 @@ module.exports = superName;
  * 
  * @param {String} bbb 123123
  */
-function superName(bbb) {
+function superName(bbb, ccc = module.exports.test) {
   return '123123';
 }
 
