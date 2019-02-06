@@ -62,3 +62,6 @@ typings/
 .next
 
 dist/
+tests/fixtures/**/check.js
+tests/fixtures/**/tsconfig.json
+tests/fixtures/**/*.d.ts
