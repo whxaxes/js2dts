@@ -610,7 +610,7 @@ export function getVariableDeclarationTypeDom(node: ts.VariableDeclaration) {
 
 // reset variable
 export function reset() {
-  uniqId = 0;
+  uniqId = 100;
   fragments = [];
   importMap = {};
   declarationList = [];
@@ -618,6 +618,7 @@ export function reset() {
   interfaceList.length = 0;
 }
 
+// create dts for file
 export function create(file: string) {
   const program = ts.createProgram([ file ], {
     target: ts.ScriptTarget.ES2017,

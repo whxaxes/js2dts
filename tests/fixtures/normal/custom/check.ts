@@ -5,3 +5,9 @@ const m = new MyTest({
 });
 
 m.on('asd', () => {});
+
+const mm = new MyTest.MyTest({
+  name: '123',
+});
+
+mm.on('ad', () => {});
