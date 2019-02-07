@@ -5,9 +5,26 @@
 const brRegex = /\r?\n/g;
 
 export interface DeclarationBase {
-  jsDocComment?: string;
-  comment?: string;
+  jsDocComment?: JsDocCommentDeclaration;
+  comment?: CommentDeclaration;
   flags?: DeclarationFlags;
+  namespace?: NamespaceDeclaration;
+}
+
+export interface NamedDeclarationBase extends DeclarationBase {
+  name: string;
+}
+
+export interface CommentDeclaration {
+  kind: 'comment';
+  comment: string;
+  flags: CommentFlags;
+}
+
+export interface JsDocCommentDeclaration {
+  kind: 'jsdoc-comment';
+  jsDocComment: string;
+  flags: CommentFlags;
 }
 
 export interface EnumMemberDeclaration extends DeclarationBase {
@@ -320,7 +337,9 @@ export type TopLevelDeclaration =
   | ExportNameDeclaration
   | ModuleDeclaration
   | EnumDeclaration
-  | Import;
+  | Import
+  | CommentDeclaration
+  | JsDocCommentDeclaration;
 
 export enum DeclarationFlags {
   None = 0,
@@ -340,13 +359,27 @@ export enum ParameterFlags {
   Rest = 1 << 1,
 }
 
+export enum CommentFlags {
+  Wrap = 0,
+  Plain = 1 << 0,
+}
+
 export const config = {
-  wrapJsDocComments: true,
   indentSpace: 2,
   outputEol: '\r\n',
 };
 
 export const util = {
+  getFullName(type: NamedDeclarationBase) {
+    return type.namespace
+      ? `${util.getFullName(type.namespace)}.${type.name}`
+      : type.name;
+  },
+
+  isNamedDeclarationBase(node: DeclarationBase): node is NamedDeclarationBase {
+    return typeof (node as NamedDeclarationBase).name === 'string';
+  },
+
   isTypeofReference(node: Type): node is TypeofReference {
     return (node as TypeofReference).kind === 'typeof';
   },
@@ -377,6 +410,22 @@ export const util = {
 };
 
 export const create = {
+  comment(comment: string, flags = CommentFlags.Wrap): CommentDeclaration {
+    return {
+      kind: 'comment',
+      comment,
+      flags,
+    };
+  },
+
+  jsDocComment(jsDocComment: string, flags = CommentFlags.Wrap): JsDocCommentDeclaration {
+    return {
+      kind: 'jsdoc-comment',
+      jsDocComment,
+      flags,
+    };
+  },
+
   interface(name: string, flags = DeclarationFlags.None): InterfaceDeclaration {
     return {
       name,
@@ -583,10 +632,12 @@ export const create = {
     };
   },
 
-  namedTypeReference(name: string): NamedTypeReference {
+  namedTypeReference(name: string | NamedDeclarationBase): NamedTypeReference {
     return {
       kind: 'name',
-      name,
+      name: typeof name === 'string'
+        ? name
+        : util.getFullName(name),
       typeParameters: [],
     };
   },
@@ -963,6 +1014,7 @@ export function getWriter(
   function startWithDeclareOrExport(
     s: string,
     flags: DeclarationFlags | undefined = DeclarationFlags.None,
+    noDeclare?: boolean,
   ) {
     if (flags & DeclarationFlags.Export) {
       start(`export ${s}`);
@@ -972,6 +1024,8 @@ export function getWriter(
     } else if (flags & DeclarationFlags.ExportDefault) {
       start(`export default ${s}`);
     } else if (getContextFlags() & ContextFlags.Module) {
+      start(s);
+    } else if (noDeclare) {
       start(s);
     } else {
       start(`declare ${s}`);
@@ -1000,28 +1054,11 @@ export function getWriter(
 
   function printDeclarationComments(decl: DeclarationBase) {
     if (decl.comment) {
-      start(`// ${decl.comment}`);
-      newline();
+      writeComment(decl.comment);
     }
-    if (decl.jsDocComment) {
-      if (config.wrapJsDocComments) {
-        start('/**');
-        newline();
-        for (const line of decl.jsDocComment.split(brRegex)) {
-          start(` * ${line}`);
-          newline();
-        }
-        start(' */');
-      } else {
-        let lineIndex = 0;
-        for (const line of decl.jsDocComment.split(brRegex)) {
-          newline();
-          start(line.replace(/^ */, lineIndex === 0 ? '' : ' '));
-          lineIndex++;
-        }
-      }
 
-      newline();
+    if (decl.jsDocComment) {
+      writeJsDocComment(decl.jsDocComment);
     }
   }
 
@@ -1216,7 +1253,7 @@ export function getWriter(
 
   function writeInterface(d: InterfaceDeclaration) {
     printDeclarationComments(d);
-    startWithDeclareOrExport(`interface ${d.name} `, d.flags);
+    startWithDeclareOrExport(`interface ${d.name} `, d.flags, true);
     if (d.baseTypes && d.baseTypes.length) {
       print('extends ');
       let first = true;
@@ -1520,6 +1557,36 @@ export function getWriter(
     newline();
   }
 
+  function writeComment(d: CommentDeclaration) {
+    if (d.flags & CommentFlags.Plain) {
+      start(d.comment);
+    } else {
+      start(`// ${d.comment}`);
+    }
+
+    newline();
+  }
+
+  function writeJsDocComment(d: JsDocCommentDeclaration) {
+    if (d.flags & CommentFlags.Plain) {
+      let lineIndex = 0;
+      for (const line of d.jsDocComment.split(brRegex)) {
+        start(line.replace(/^ */, lineIndex === 0 ? '' : ' '));
+        newline();
+        lineIndex++;
+      }
+    } else {
+      start('/**');
+      newline();
+      for (const line of d.jsDocComment.split(brRegex)) {
+        start(` * ${line}`);
+        newline();
+      }
+      start(' */');
+      newline();
+    }
+  }
+
   function writeDeclaration(d: TopLevelDeclaration) {
     if (typeof d === 'string') {
       return print(d);
@@ -1559,6 +1626,10 @@ export function getWriter(
           return writeImport(d);
         case 'enum':
           return writeEnum(d);
+        case 'comment':
+          return writeComment(d);
+        case 'jsdoc-comment':
+          return writeJsDocComment(d);
 
         default:
           return never(

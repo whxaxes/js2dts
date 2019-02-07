@@ -18,7 +18,7 @@ function coffeeWork(task: coffee.Coffee) {
     .end();
 }
 
-async function checkDts(file: string) {
+async function checkDts(file: string, execute: boolean = true) {
   const dir = path.resolve(__dirname, './fixtures', file);
   const jsFile = path.resolve(dir, 'index');
   const result = create(`${jsFile}.js`)!;
@@ -28,7 +28,7 @@ async function checkDts(file: string) {
   fs.writeFileSync(`${jsFile}.d.ts`, code);
   await coffeeWork(coffee.fork(tscFile, [ '-p', path.resolve(dir, 'tsconfig.json') ], { execArgv: [] }));
   const checkerTs = path.resolve(dir, 'check.js');
-  if (fs.existsSync(checkerTs)) {
+  if (fs.existsSync(checkerTs) && execute) {
     await coffeeWork(coffee.fork(path.resolve(dir, 'check.js'), [], { execArgv: [] }));
   }
   return code;
@@ -57,5 +57,9 @@ describe('index.test.ts', () => {
 
   it('normal#custom', async () => {
     await checkDts('normal/custom');
+  });
+
+  it('plugin#egg-router', async () => {
+    await checkDts('plugin/egg-router', false);
   });
 });
