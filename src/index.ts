@@ -5,21 +5,41 @@ import * as dom from './dom';
 import { isEqual } from 'lodash';
 let uniqId = 100;
 
+interface Declaration {
+  import: dom.Import[];
+  export: dom.TopLevelDeclaration[];
+  fragment: dom.NamespaceMember[];
+}
+
+interface ImportCacheElement {
+  default?: string;
+  list: string[];
+  from: string;
+  realPath: string;
+}
+
 // runtime env
 interface Env {
+  file: string;
   program: ts.Program;
   checker: ts.TypeChecker;
   sourceFile: ts.SourceFile;
-  fragments: dom.TopLevelDeclaration[];
-  importMap: { [key: string]: { default?: string, list: string[] } };
+  declaration: Declaration;
+  importCache: { [key: string]: ImportCacheElement };
   declarationList: ts.Node[];
+  exportDefaultName: string;
+  exportNsName: string;
+  exportInterface?: dom.InterfaceDeclaration;
   exportNamespace: dom.NamespaceDeclaration;
   cacheDeclarationList: ts.Node[];
   interfaceList: dom.InterfaceDeclaration[];
+  deps: { [key: string]: { env: Env; namespace: dom.NamespaceDeclaration } };
+  toString: () => string;
 }
 
 let env: Env;
 const envStack: Env[] = [];
+const envCache: { [key: string]: Env } = {};
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
 const typeRoot = path.resolve(nodeModulesRoot, './@types/');
@@ -214,21 +234,78 @@ export function getReferenceModule(symbol: ts.Symbol) {
   return valueDeclaration.getSourceFile();
 }
 
+// create deps in top env
+export function createDepsByFile(file: string) {
+  // add all deps to top env
+  const topEnv = envStack[0] || env;
+  const deps = topEnv.deps[file];
+  if (deps) {
+    return deps;
+  }
+
+  // create new env
+  const customEnv = create(file);
+
+  // add declaration to namespace
+  const namespace = dom.create.namespace(getAnonymousName());
+  namespace.members.push(dom.create.comment(path.relative(process.cwd(), file)));
+  customEnv.declaration.fragment.forEach(decl => {
+    decl.flags = dom.DeclarationFlags.Export;
+    (decl as dom.DeclarationBase).namespace = namespace;
+    namespace.members.push(decl);
+  });
+  topEnv.declaration.fragment.push(namespace);
+
+  // compose import statement
+  Object.keys(customEnv.importCache).forEach(k => {
+    const customImportObj = customEnv.importCache[k];
+    if (customImportObj.list.length) {
+      customImportObj.list.forEach(name => {
+        collectImportModule(customImportObj.from, name, customImportObj.realPath, topEnv);
+      });
+    } else {
+      collectImportModule(customImportObj.from, undefined, customImportObj.realPath, topEnv);
+    }
+  });
+
+  return topEnv.deps[file] = { env: customEnv, namespace };
+}
+
 // get import type dom
 export function getImportTypeDom(typeNode: ts.ImportTypeNode) {
-  if (SyntaxKind.LiteralType === typeNode.argument.kind) {
-    const args = typeNode.argument as ts.LiteralTypeNode;
-    if (ts.isStringLiteral(args.literal)) {
-      const modName = getModNameByPath(args.literal.text);
-      const exportName = collectImportModule(modName);
+  if (ts.isLiteralTypeNode(typeNode.argument) && ts.isStringLiteral(typeNode.argument.literal)) {
+    const importPath = typeNode.argument.literal.text;
+    const modName = getModNameByPath(importPath);
+    let exportName: string | undefined;
+    if (modName) {
+      exportName = collectImportModule(modName, undefined, importPath);
+    } else {
+      const filePath = resolvePath(importPath);
+      if (filePath && path.extname(filePath) === '.js') {
+        const { env, namespace } = createDepsByFile(filePath);
+        exportName = `${namespace.name}.${env.exportDefaultName}`;
+      }
+    }
+
+    if (exportName) {
       const referenceType = dom.create.namedTypeReference(exportName);
       if (typeNode.isTypeOf) {
         return dom.create.typeof(referenceType);
       }
+
       return referenceType;
     }
   }
+
   return dom.type.any;
+}
+
+export function resolvePath(url) {
+  try {
+    return require.resolve(url);
+  } catch (e) {
+    return;
+  }
 }
 
 export function getReturnTypeFromDeclaration(declaration: ts.SignatureDeclaration) {
@@ -585,7 +662,11 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
       collectImportModule(referenceModule, interfaceName);
     } else if (ts.isSourceFile(referenceModule)) {
       const modName = getModNameByPath(referenceModule.fileName);
-      collectImportModule(modName, interfaceName);
+      if (modName) {
+        collectImportModule(modName, interfaceName, referenceModule.fileName);
+      } else {
+        return;
+      }
     } else {
       // function/class without name
       if (ts.isClassLike(referenceModule) || ts.isFunctionLike(referenceModule)) {
@@ -755,23 +836,16 @@ export function getFunctionLikeTypeDom(node: ts.FunctionLike, fnName?: string) {
   return typeDom;
 }
 
-// get base name
-export function getBaseName(fileName: string) {
-  const exts = [ '.d.ts', '.ts', '.js' ];
-  for (const ext of exts) {
-    if (fileName.endsWith(ext)) {
-      return path.basename(fileName, ext);
-    }
-  }
-  return path.basename(fileName);
-}
-
 export function getModNameByPath(fileName: string) {
-  const extname = path.extname(fileName);
-  fileName = extname ? fileName : `${fileName}.d.ts`;
-  const dir = path.dirname(fileName);
-  const basename = getBaseName(fileName);
+  const extname = '.d.ts';
+  const ext = path.extname(fileName);
+  fileName += ext ? '' : extname;
+  if (!fileName.endsWith(extname) || !fs.existsSync(fileName)) {
+    return;
+  }
 
+  const dir = path.dirname(fileName);
+  const basename = path.basename(fileName, extname);
   if (fileName.startsWith(nodeModulesRoot)) {
     const modRoot = fileName.startsWith(typeRoot) ? typeRoot : nodeModulesRoot;
     const pkgPath = path.resolve(dir, './package.json');
@@ -783,24 +857,34 @@ export function getModNameByPath(fileName: string) {
     }
 
     return modName;
-  } else {
-    const sourceFileDir = path.dirname(env.sourceFile.fileName);
-    return path.relative(sourceFileDir, fileName);
   }
 }
 
 // collect import modules
-function collectImportModule(name: string, exportName?: string) {
-  const exportObj = env.importMap[name] = env.importMap[name] || { default: undefined, list: [] };
-  if (exportName && !exportObj.list.includes(exportName)) {
-    exportObj.list.push(exportName);
+function collectImportModule(
+  name: string,
+  exportName?: string,
+  realPath?: string,
+  collectEnv: Env = env,
+) {
+  realPath = realPath || name;
+  const importObj = collectEnv.importCache[realPath] = collectEnv.importCache[realPath] || {
+    default: undefined,
+    list: [],
+    realPath,
+    from: name,
+  } as ImportCacheElement;
+
+  if (exportName && !importObj.list.includes(exportName)) {
+    importObj.list.push(exportName);
   } else if (!exportName) {
-    if (!exportObj.default) {
-      exportObj.default = name;
+    if (!importObj.default) {
+      importObj.default = name.replace(/\/(\w)/g, (_, k: string) => k.toUpperCase());
     }
 
-    exportName = exportObj.default;
+    exportName = importObj.default;
   }
+
   return exportName;
 }
 
@@ -831,8 +915,8 @@ export function createInterfaceInNs(name: string, namespace: dom.NamespaceDeclar
   return interfaceType;
 }
 
-// start the program
-function startProgram(file: string) {
+// prepare env
+function prepareEnv(file: string) {
   const program = ts.createProgram([ file ], {
     target: ts.ScriptTarget.ES2017,
     module: ts.ModuleKind.CommonJS,
@@ -840,70 +924,92 @@ function startProgram(file: string) {
     noErrorTruncation: true,
   });
 
+  // save env
+  if (env) {
+    envStack.push(env);
+  }
+
+  const exportDefaultName = getAnonymousName();
+
+  // init env object
   env = {
+    file,
+    deps: {},
     program,
     checker: program.getTypeChecker(),
     sourceFile: program.getSourceFile(file)!,
-    fragments: [],
-    importMap: {},
+    declaration: {
+      import: [],
+      fragment: [],
+      export: [],
+    },
+    importCache: {},
     declarationList: [],
     cacheDeclarationList: [],
     interfaceList: [],
-    exportNamespace: dom.create.namespace(getAnonymousName()),
-  };
+    exportDefaultName,
+    exportNsName: getAnonymousName(),
+    exportInterface: undefined,
+    exportNamespace: dom.create.namespace(exportDefaultName),
 
-  envStack.push(env);
-}
-
-// end with response
-function endWithResponse() {
-  const response = {
-    ...env,
-
+    // get string
     toString() {
-      return this.fragments.map(dts => dom.emit(dts)).join('');
+      return [
+        dom.emit(this.declaration.import),
+        dom.emit(this.declaration.export),
+        dom.emit(this.declaration.fragment),
+      ].join('');
     },
   };
 
+  // cache env
+  envCache[file] = env;
+}
+
+// end env
+function endEnv() {
+  const response = env;
+
   // restore env
-  envStack.pop();
-  env = envStack[envStack.length - 1];
+  env = envStack.pop()!;
 
   return response;
 }
 
 // create dts for file
 export function create(file: string) {
-  startProgram(file);
+  // check cache
+  const cacheEnv = envCache[file];
+  if (cacheEnv) {
+    return cacheEnv;
+  }
 
+  // start program
+  prepareEnv(file);
+
+  const declaration = env.declaration;
   if (!env.sourceFile) {
-    env.fragments.push(dom.create.comment('source file create fail'));
-    return endWithResponse();
+    declaration.fragment.push(dom.create.comment('source file create fail'));
+    return endEnv();
   }
 
   // check node
   const { exportDefaultNode, exportNodeList } = findExportNode(env.sourceFile);
   if (!exportDefaultNode && !exportNodeList.length) {
-    env.fragments.push(dom.create.comment('cannot find export module'));
-    return endWithResponse();
+    declaration.fragment.push(dom.create.comment('cannot find export module'));
+    return endEnv();
   }
-
-  const exportDefaultName: string = env.exportNamespace.name;
-  let exportNsName: string | undefined;
-  let exportNs: dom.InterfaceDeclaration | undefined;
 
   // export list
   if (exportNodeList.length) {
-    exportNsName = getAnonymousName();
-    exportNs = createInterfaceInNs(exportNsName);
+    env.exportInterface = createInterfaceInNs(env.exportNsName);
     exportNodeList.map(({ name, node, originalNode }) => {
       const typeNode = getTypeNodeAtLocation(node);
       const typeDom = getTypeDom(typeNode) || dom.type.any;
       const memberDom: dom.ObjectTypeMember = dom.create.property(name, typeDom);
       addJsDocToTypeDom(memberDom, originalNode);
-      exportNs!.members.push(memberDom);
+      env.exportInterface!.members.push(memberDom);
     });
-    exportNs.comment = dom.create.comment('exports');
   }
 
   // export default
@@ -911,57 +1017,58 @@ export function create(file: string) {
     const typeNode = getTypeNodeAtLocation(exportDefaultNode);
     let typeDom = getTypeDom(typeNode) || dom.type.any;
 
-    if (exportNodeList.length) {
-      exportNsName = getAnonymousName();
+    if (env.exportInterface) {
       typeDom = dom.create.intersection([
         typeDom,
-        dom.create.namedTypeReference(exportNs!),
+        dom.create.namedTypeReference(env.exportInterface),
       ]);
     }
 
-    env.fragments.push(dom.create.const(exportDefaultName, typeDom));
+    declaration.fragment.push(dom.create.const(env.exportDefaultName, typeDom));
   } else if (exportNodeList.length) {
-    env.fragments.push(dom.create.const(
-      exportDefaultName,
-      dom.create.namedTypeReference(exportNs!),
+    declaration.fragment.push(dom.create.const(
+      env.exportDefaultName,
+      dom.create.namedTypeReference(env.exportInterface!),
     ));
   }
 
-  // declaration list
+  // add export=
+  declaration.export.push(dom.create.exportEquals(env.exportDefaultName));
+
+  // add export namespace
+  declaration.fragment.push(env.exportNamespace);
+
+  // add declaration list
   let i = 0;
   while (i < env.declarationList.length) {
-    const declaration = env.declarationList[i]!;
-    if (ts.isClassLike(declaration)) {
-      const classDeclaration = getClassLikeTypeDom(declaration);
-      env.fragments.push(classDeclaration);
-    } else if (ts.isFunctionLike(declaration)) {
-      const functionDeclaration = getFunctionLikeTypeDom(declaration)!;
-      env.fragments.push(functionDeclaration);
-    } else if (ts.isVariableDeclaration(declaration)) {
-      const varDeclaration = getVariableDeclarationTypeDom(declaration);
-      env.fragments.push(varDeclaration);
+    const declare = env.declarationList[i]!;
+    if (ts.isClassLike(declare)) {
+      const classDeclaration = getClassLikeTypeDom(declare);
+      declaration.fragment.push(classDeclaration);
+    } else if (ts.isFunctionLike(declare)) {
+      const functionDeclaration = getFunctionLikeTypeDom(declare)!;
+      declaration.fragment.push(functionDeclaration);
+    } else if (ts.isVariableDeclaration(declare)) {
+      const varDeclaration = getVariableDeclarationTypeDom(declare);
+      declaration.fragment.push(varDeclaration);
     }
     i++;
   }
 
-  // import list
-  Object.keys(env.importMap).forEach(k => {
-    const obj = env.importMap[k];
-
-    // import { xx } from 'xx';
-    if (obj.list.length) {
-      env.fragments.unshift(dom.create.importNamed(obj.list.map(name => ({ name })), k));
-    }
+  // add import list
+  Object.keys(env.importCache).forEach(k => {
+    const obj = env.importCache[k];
 
     // import * as xx
     if (obj.default) {
-      env.fragments.unshift(dom.create.importAll(obj.default, k));
+      declaration.import.push(dom.create.importAll(obj.default, obj.from));
+    }
+
+    // import { xx } from 'xx';
+    if (obj.list.length) {
+      declaration.import.push(dom.create.importNamed(obj.list.map(name => ({ name })), obj.from));
     }
   });
 
-  // export =
-  env.fragments.push(env.exportNamespace);
-  env.fragments.push(dom.create.exportEquals(exportDefaultName));
-
-  return endWithResponse();
+  return endEnv();
 }

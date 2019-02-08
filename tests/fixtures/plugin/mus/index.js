@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const constant = require('./compile/constant');
 const ast = require('./compile/ast');
 const utils = require('./utils/utils');
 const compile = require('./compile/compile');
@@ -28,6 +29,7 @@ class Mus {
       utils,
       parser,
       processor,
+      constant,
     };
   }
 

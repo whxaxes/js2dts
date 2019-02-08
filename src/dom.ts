@@ -318,7 +318,9 @@ export type NamespaceMember =
   | NamespaceDeclaration
   | ConstDeclaration
   | VariableDeclaration
-  | FunctionDeclaration;
+  | FunctionDeclaration
+  | CommentDeclaration
+  | JsDocCommentDeclaration;
 export type ModuleMember =
   | InterfaceDeclaration
   | TypeAliasDeclaration
@@ -337,9 +339,7 @@ export type TopLevelDeclaration =
   | ExportNameDeclaration
   | ModuleDeclaration
   | EnumDeclaration
-  | Import
-  | CommentDeclaration
-  | JsDocCommentDeclaration;
+  | Import;
 
 export enum DeclarationFlags {
   None = 0,
@@ -410,6 +410,26 @@ export const util = {
 
   isConstructorDeclaration(node: DeclarationBase): node is ConstructorDeclaration {
     return (node as ConstructorDeclaration).kind === 'constructor';
+  },
+
+  isImportAllDeclaration(node: DeclarationBase): node is ImportAllDeclaration {
+    return (node as ImportAllDeclaration).kind === 'importAll';
+  },
+
+  isImportDefaultDeclaration(node: DeclarationBase): node is ImportDefaultDeclaration {
+    return (node as ImportDefaultDeclaration).kind === 'importDefault';
+  },
+
+  isImportNamedDeclaration(node: DeclarationBase): node is ImportNamedDeclaration {
+    return (node as ImportNamedDeclaration).kind === 'importNamed';
+  },
+
+  isImportEqualsDeclaration(node: DeclarationBase): node is ImportEqualsDeclaration {
+    return (node as ImportEqualsDeclaration).kind === 'import=';
+  },
+
+  isImportDeclaration(node: DeclarationBase): node is ImportDeclaration {
+    return (node as ImportDeclaration).kind === 'import';
   },
 };
 
@@ -1646,9 +1666,13 @@ export function getWriter(
 }
 
 export function emit(
-  rootDecl: TopLevelDeclaration,
+  rootDecl: TopLevelDeclaration | TopLevelDeclaration[],
   options: EmitOptions = {},
 ): string {
+  if (Array.isArray(rootDecl)) {
+    return rootDecl.map(decl => emit(decl, options)).join('');
+  }
+
   const writer = getWriter(rootDecl, options);
   writer.writeDeclaration(rootDecl);
   return writer.output;

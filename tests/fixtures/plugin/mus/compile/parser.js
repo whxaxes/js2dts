@@ -15,6 +15,8 @@ const optMapping = {
   and: '&&',
 };
 
+exports.constant = require('./constant');
+
 exports.parseSpaceAttr = function(expr, cb) {
   const result = exports.splitOperator(expr);
   const fragments = result.fragments;
