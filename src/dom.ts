@@ -404,6 +404,10 @@ export const util = {
     return (node as ObjectType).kind === 'object';
   },
 
+  isNamedTypeReference(node: Type): node is NamedTypeReference {
+    return (node as NamedTypeReference).kind === 'name';
+  },
+
   isConstructorDeclaration(node: DeclarationBase): node is ConstructorDeclaration {
     return (node as ConstructorDeclaration).kind === 'constructor';
   },

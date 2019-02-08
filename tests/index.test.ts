@@ -35,31 +35,47 @@ async function checkDts(file: string, execute: boolean = true) {
 }
 
 describe('index.test.ts', () => {
-  it('normal#object', async () => {
-    await checkDts('normal/object');
+  describe('normal', () => {
+    it('normal#object', async () => {
+      await checkDts('normal/object');
+    });
+
+    it('normal#function', async () => {
+      await checkDts('normal/function');
+    });
+
+    it('normal#function.1', async () => {
+      await checkDts('normal/function.1');
+    });
+
+    it('normal#class', async () => {
+      await checkDts('normal/class');
+    });
+
+    it('normal#exports', async () => {
+      await checkDts('normal/exports');
+    });
+
+    it('normal#custom', async () => {
+      await checkDts('normal/custom');
+    });
+
+    it('normal#prototype', async () => {
+      await checkDts('normal/prototype');
+    });
+
+    it('normal#prototype.1', async () => {
+      await checkDts('normal/prototype.1');
+    });
   });
 
-  it('normal#function', async () => {
-    await checkDts('normal/function');
-  });
+  describe('plugin', () => {
+    it('plugin#egg-router', async () => {
+      await checkDts('plugin/egg-router', false);
+    });
 
-  it('normal#function.1', async () => {
-    await checkDts('normal/function.1');
-  });
-
-  it('normal#class', async () => {
-    await checkDts('normal/class');
-  });
-
-  it('normal#exports', async () => {
-    await checkDts('normal/exports');
-  });
-
-  it('normal#custom', async () => {
-    await checkDts('normal/custom');
-  });
-
-  it('plugin#egg-router', async () => {
-    await checkDts('plugin/egg-router', false);
+    it('plugin#mus', async () => {
+      await checkDts('plugin/mus', false);
+    });
   });
 });

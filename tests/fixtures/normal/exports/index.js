@@ -19,3 +19,6 @@ exports.development = {
 
 exports.test = 123123;
 exports.blabla = '12313';
+
+const myExport = exports;
+myExport.xxx = 123;
