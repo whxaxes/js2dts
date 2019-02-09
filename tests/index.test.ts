@@ -8,6 +8,7 @@ const tsconfigPlain = JSON.stringify({
     target: 'es2017',
     module: 'commonjs',
     moduleResolution: 'node',
+    noImplicitAny: false,
   },
 }, null, 2);
 

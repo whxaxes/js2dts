@@ -13,6 +13,7 @@ class MyTest extends events.EventEmitter {
   constructor(options) {
     super();
     this.opt = options;
+    this._dd = 123;
   }
 
   /**

@@ -56,7 +56,7 @@ export enum GetTypeDomFlags {
 // the flags using to create dts
 export enum CreateDtsFlags {
   None = 0,
-  IgnorePrivateTag = 1 << 0,
+  IgnorePrivate = 1 << 0,
 }
 
 // default build flags
@@ -439,9 +439,14 @@ export function findExportNode(sourceFile: ts.SourceFile) {
 // find this.xxx =
 export function findAssignToThis(statements: ts.NodeArray<ts.Statement>) {
   const assignList: Array<{ name: string; node?: ts.TypeNode }> = [];
-  findAssignByName(statements, 'this', ({ key }) => {
+  findAssignByName(statements, 'this', ({ key, node }) => {
+    const propName = util.getText(key);
+    if (checkIsPrivate(node, propName)) {
+      return;
+    }
+
     assignList.push({
-      name: util.getText(key),
+      name: propName,
       node: getTypeNodeAtLocation(key),
     });
   });
@@ -526,7 +531,7 @@ export function eachPropertiesTypeDom<T extends ts.ClassElement | ts.ObjectLiter
       return;
     }
 
-    if (checkIsPrivate(member)) {
+    if (checkIsPrivate(member, propertyName)) {
       return;
     }
 
@@ -654,7 +659,7 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
     if (util.isDeclareModule(referenceModule)) {
       const modName = util.getText(referenceModule.name);
       if (checkAssignEqual(referenceModule, interfaceName)) {
-        collectImportModule(interfaceName = modName);
+        interfaceName = collectImportModule(modName);
       } else {
         collectImportModule(modName, interfaceName);
       }
@@ -662,7 +667,7 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
       const modName = getModNameByPath(referenceModule.fileName);
       if (modName) {
         if (checkAssignEqual(referenceModule, interfaceName)) {
-          collectImportModule(interfaceName = modName, undefined, referenceModule.fileName);
+          interfaceName = collectImportModule(modName, undefined, referenceModule.fileName);
         } else {
           collectImportModule(modName, interfaceName, referenceModule.fileName);
         }
@@ -734,13 +739,14 @@ export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.Paramet
   return params;
 }
 
-// check whether has @private tag in jsDoc
-export function checkIsPrivate(node: ts.Node) {
-  if (env.flags & CreateDtsFlags.IgnorePrivateTag) {
+// check whether has @private tag in jsDoc or variable name start with _
+export function checkIsPrivate(node: ts.Node, name?: string) {
+  if (env.flags & CreateDtsFlags.IgnorePrivate) {
     return true;
   }
 
-  return !!util.findJsDocTag(node, 'private');
+  return !!util.findJsDocTag(node, 'private') ||
+    (name && name.startsWith('_'));
 }
 
 // try to find definition of function prototype
@@ -757,8 +763,8 @@ export function tryParseFunctionAsClass(node: ts.FunctionDeclaration) {
     const classDeclare = dom.create.class(fnName);
     const prototypeExpression = `${fnName}.prototype`;
     findAssignByName(block.statements, [ prototypeExpression, fnName ], ({ name, key, value, node }) => {
-      const keyText = util.getText(key);
-      const keyIsPrototype = keyText === 'prototype';
+      const propName = util.getText(key);
+      const keyIsPrototype = propName === 'prototype';
       const isStaticProp = name === fnName && !keyIsPrototype;
       const isPrototypeAssignment = name === fnName && keyIsPrototype;
       if (isPrototypeAssignment || name === prototypeExpression) {
@@ -785,13 +791,12 @@ export function tryParseFunctionAsClass(node: ts.FunctionDeclaration) {
         }
       } else {
         // xxx.prototype.xx =, xxx.xx =
-
-        if (checkIsPrivate(node)) {
+        if (checkIsPrivate(node, propName)) {
           return;
         }
 
         const typeNode = getTypeNodeAtLocation(value);
-        const typeDom = getPropTypeDomByNode(util.getText(key), typeNode);
+        const typeDom = getPropTypeDomByNode(propName, typeNode);
         if (isStaticProp) typeDom.flags = dom.DeclarationFlags.Static;
         addJsDocToTypeDom(typeDom, node);
         classDeclare.members.push(typeDom);
@@ -849,8 +854,7 @@ export function getModNameByPath(fileName: string) {
   }
 
   const extname = '.d.ts';
-  const ext = path.extname(fileName);
-  fileName += ext ? '' : extname;
+  fileName = util.normalizeDtsUrl(fileName);
 
   if (!fileName.endsWith(extname) || !fs.existsSync(fileName)) {
     return;
@@ -862,9 +866,10 @@ export function getModNameByPath(fileName: string) {
     const modRoot = fileName.startsWith(typeRoot) ? typeRoot : nodeModulesRoot;
     const pkgPath = path.resolve(dir, './package.json');
     const pkgInfo = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath).toString()) : {};
+    const typesUrl = util.normalizeDtsUrl(path.resolve(dir, pkgInfo.types || './index.d.ts'));
     let modName = dir.substring(modRoot.length + 1);
 
-    if (fileName !== path.resolve(dir, pkgInfo.types || './index.d.ts')) {
+    if (fileName !== typesUrl) {
       modName = `${modName}/${basename}`;
     }
 

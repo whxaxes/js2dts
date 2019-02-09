@@ -7,7 +7,8 @@
     "build": "tsc -d",
     "build:w": "tsc -d -w",
     "release": "del ./dist && npm run build",
-    "test": "jest"
+    "test": "jest",
+    "cov": "npm run build && jest --coverage"
   },
   "repository": {
     "type": "git",
@@ -36,10 +37,10 @@
     "@types/jest": "^23.3.12",
     "@types/lodash": "^4.14.120",
     "@types/mkdirp": "^0.5.2",
-    "@types/node": "^9.4.5",
     "coffee": "^5.2.1",
     "del": "^3.0.0",
     "del-cli": "^1.1.0",
+    "egg": "^2.15.1",
     "jest": "^23.6.0",
     "lodash": "^4.17.11",
     "ts-jest": "^23.10.5",

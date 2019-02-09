@@ -1,4 +1,5 @@
 import * as ts from 'typescript';
+import * as path from 'path';
 
 export function getTypeArguments(node: ts.TypeNode): ts.TypeNode[] | undefined {
   return (node as any).typeArguments;
@@ -33,6 +34,13 @@ export function getText(node?: ts.Node) {
 export function findJsDocTag(node: ts.Node, name: string) {
   const jsDocTags = ts.getJSDocTags(node);
   return jsDocTags.find(tag => getText(tag.tagName) === name);
+}
+
+// normalize d.ts url
+export function normalizeDtsUrl(file: string) {
+  const ext = path.extname(file);
+  file += ext ? '' : '.d.ts';
+  return file;
 }
 
 // resolve url
