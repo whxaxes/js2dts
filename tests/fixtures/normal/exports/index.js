@@ -21,4 +21,11 @@ exports.test = 123123;
 exports.blabla = '12313';
 
 const myExport = exports;
+myExport.xxx = '123';
 myExport.xxx = 123;
+
+
+exports.a = () => 123123;
+exports.b = () => '123123';
+exports.c = () => exports.a;
+exports.b = () => 222;

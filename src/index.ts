@@ -76,11 +76,6 @@ export function getAnonymousName() {
   return `T${uniqId++}`;
 }
 
-export function isFunctionTypeDom(fn: dom.Type): fn is dom.FunctionType {
-  const fm = fn as dom.FunctionType;
-  return fm.kind === 'function-type';
-}
-
 // get type dom from typeNode
 export function getTypeDom(typeNode?: ts.TypeNode, flags: GetTypeDomFlags = GetTypeDomFlags.None) {
   if (!typeNode) return;
@@ -599,24 +594,25 @@ export function getPropTypeDomByNode(name: string, node?: ts.Node, flags: dom.De
 
 // get reference module by symbol
 export function getReferenceModule(symbol: ts.Symbol) {
-  if (!symbol || !symbol.valueDeclaration) return;
-  const valueDeclaration = symbol.valueDeclaration;
-  const declarationFile = valueDeclaration.getSourceFile().fileName;
-  const isFromLib = declarationFile.startsWith(path.dirname(require.resolve('typescript')));
+  if (!symbol) return false;
+  const symbolDeclaration = symbol.valueDeclaration || symbol.declarations[0];
+  if (!symbolDeclaration) return false;
+  const declarationFile = symbolDeclaration.getSourceFile().fileName;
+  const isFromLib = declarationFile.startsWith(path.join(nodeModulesRoot, 'typescript/lib/lib.'));
   const isFromNodeModule = declarationFile.startsWith(nodeModulesRoot);
   if (isFromLib) {
     // build-in module
     return;
   } else if (declarationFile === env.sourceFile.fileName) {
     // current module
-    return valueDeclaration;
+    return symbolDeclaration;
   } else if (!isFromNodeModule) {
     // custom module
-    return valueDeclaration;
+    return symbolDeclaration;
   }
 
   // find in global modules
-  let declaration: ts.Node = valueDeclaration;
+  let declaration: ts.Node = symbolDeclaration;
   while (declaration && !ts.isSourceFile(declaration)) {
     if (util.isDeclareModule(declaration)) {
       // declare module "xxx" {}
@@ -626,7 +622,7 @@ export function getReferenceModule(symbol: ts.Symbol) {
     declaration = declaration.parent;
   }
 
-  return valueDeclaration.getSourceFile();
+  return symbolDeclaration.getSourceFile();
 }
 
 export function getExportsBySymbol(node: ts.Node) {
@@ -650,6 +646,10 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
   };
 
   const referenceModule = getReferenceModule(symbol);
+  if (referenceModule === false) {
+    return;
+  }
+
   if (referenceModule) {
     if (util.isDeclareModule(referenceModule)) {
       const modName = util.getText(referenceModule.name);
@@ -715,7 +715,10 @@ export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.Paramet
       type = getTypeNodeAtLocation(param);
     }
 
-    let flags = param.initializer ? dom.ParameterFlags.Optional : dom.ParameterFlags.None;
+    let flags = (param.initializer || util.hasQuestionToken(param))
+      ? dom.ParameterFlags.Optional
+      : dom.ParameterFlags.None;
+
     if (param.dotDotDotToken) {
       // ...args
       flags |= dom.ParameterFlags.Rest;
@@ -866,6 +869,10 @@ export function getModNameByPath(fileName: string) {
     }
 
     return modName;
+  } else {
+    const sourceFileDir = path.dirname(env.sourceFile.fileName);
+    const from = path.relative(sourceFileDir, path.join(dir, basename));
+    return from.startsWith('.') ? from : `./${from}`;
   }
 }
 
@@ -888,7 +895,9 @@ function collectImportModule(
     importObj.list.push(exportName);
   } else if (!exportName) {
     if (!importObj.default) {
-      importObj.default = name.replace(/\/(\w)/g, (_, k: string) => k.toUpperCase());
+      importObj.default = name
+        .replace(/\/(\w)/g, (_, k: string) => k.toUpperCase())
+        .replace(/\/|\./g, '');
     }
 
     exportName = importObj.default;

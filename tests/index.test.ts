@@ -60,6 +60,10 @@ describe('index.test.ts', () => {
       await checkDts('normal/custom');
     });
 
+    it('normal#custom.1', async () => {
+      await checkDts('normal/custom.1');
+    });
+
     it('normal#prototype', async () => {
       await checkDts('normal/prototype');
     });

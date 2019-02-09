@@ -1,8 +1,11 @@
-import { development, test, blabla, xxx } from './';
+import * as obj from './';
 
-development.watchDirs = [ 11, 2 ];
-development.reloadOnDebug.valueOf();
-development.ignoreDirs.slice(0);
-test.toFixed();
-xxx.toFixed();
-blabla.trim();
+obj.development.watchDirs = [ 11, 2 ];
+obj.development.reloadOnDebug.valueOf();
+obj.development.ignoreDirs.slice(0);
+obj.test.toFixed();
+obj.xxx.toFixed();
+obj.blabla.trim();
+obj.a().toFixed();
+obj.b().toFixed();
+obj.c()().toFixed();

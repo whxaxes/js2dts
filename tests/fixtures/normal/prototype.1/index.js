@@ -26,8 +26,16 @@ Router.prototype.post = function(url) {
 
 const rpp = rp;
 
-rpp.head = function(url) {
-  return url;
+if (rpp) {
+  rpp.head = function(url) {
+    return url;
+  }
+} else if (rp) {
+  rpp.bbb = function(url) {
+    return url;
+  }
+} else {
+  Router.aaa = () => 123;
 }
 
 // static method
