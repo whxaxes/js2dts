@@ -67,6 +67,10 @@ describe('index.test.ts', () => {
     it('normal#prototype.1', async () => {
       await checkDts('normal/prototype.1');
     });
+
+    it('normal#jsdoc', async () => {
+      await checkDts('normal/jsdoc');
+    });
   });
 
   describe('plugin', () => {
@@ -76,6 +80,10 @@ describe('index.test.ts', () => {
 
     it('plugin#mus', async () => {
       await checkDts('plugin/mus', false);
+    });
+
+    it('plugin#egg-core', async () => {
+      await checkDts('plugin/egg-core', false);
     });
   });
 });
