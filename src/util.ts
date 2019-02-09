@@ -16,6 +16,10 @@ export function hasQuestionToken(node: ts.Node) {
   return (node as any).questionToken !== undefined;
 }
 
+export function isDeclareModule(node: ts.Node): node is ts.ModuleDeclaration {
+  return ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name);
+}
+
 export function getText(node?: ts.Node) {
   if (node) {
     return ts.isIdentifier(node)

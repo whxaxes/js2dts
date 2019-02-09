@@ -36,6 +36,7 @@ interface Env {
   cacheDeclarationList: ts.Node[];
   interfaceList: dom.InterfaceDeclaration[];
   deps: { [key: string]: { env: Env; namespace: dom.NamespaceDeclaration } };
+  ambientModNames: string[];
   toString: () => string;
 }
 
@@ -175,45 +176,6 @@ export function getIntersectionTypeDom(typeNode: ts.IntersectionTypeNode) {
 
 export function getUnionTypeDom(typeNode: ts.UnionTypeNode) {
   return dom.create.union(typeNode.types.map(node => getTypeDom(node)));
-}
-
-export function getReferenceModule(symbol: ts.Symbol) {
-  if (!symbol || !symbol.valueDeclaration) return;
-  const valueDeclaration = symbol.valueDeclaration;
-  const declarationFile = valueDeclaration.getSourceFile().fileName;
-  const isFromLib = declarationFile.startsWith(path.dirname(require.resolve('typescript')));
-  const isFromNodeModule = declarationFile.startsWith(nodeModulesRoot);
-  if (isFromLib) {
-    // build-in module
-    return;
-  } else if (declarationFile === env.sourceFile.fileName) {
-    // current module
-    return valueDeclaration;
-  } else if (!isFromNodeModule) {
-    // custom module
-    return valueDeclaration;
-  }
-
-  const modules = env.checker.getAmbientModules();
-  const names = modules.map(mod => mod.escapedName.toString().replace(/^"|"$/g, ''));
-
-  let index;
-  let declaration: ts.Node = valueDeclaration;
-  while (declaration && !ts.isSourceFile(declaration)) {
-    const name = (declaration as any).name;
-    if (name && ts.isStringLiteral(name)) {
-      index = names.indexOf(name.text);
-      if (index >= 0) break;
-    }
-
-    declaration = declaration.parent;
-  }
-
-  if (index >= 0) {
-    return names[index];
-  }
-
-  return valueDeclaration.getSourceFile();
 }
 
 // create deps in top env
@@ -635,19 +597,75 @@ export function getPropTypeDomByNode(name: string, node?: ts.Node, flags: dom.De
   return typeDom;
 }
 
+// get reference module by symbol
+export function getReferenceModule(symbol: ts.Symbol) {
+  if (!symbol || !symbol.valueDeclaration) return;
+  const valueDeclaration = symbol.valueDeclaration;
+  const declarationFile = valueDeclaration.getSourceFile().fileName;
+  const isFromLib = declarationFile.startsWith(path.dirname(require.resolve('typescript')));
+  const isFromNodeModule = declarationFile.startsWith(nodeModulesRoot);
+  if (isFromLib) {
+    // build-in module
+    return;
+  } else if (declarationFile === env.sourceFile.fileName) {
+    // current module
+    return valueDeclaration;
+  } else if (!isFromNodeModule) {
+    // custom module
+    return valueDeclaration;
+  }
+
+  // find in global modules
+  let declaration: ts.Node = valueDeclaration;
+  while (declaration && !ts.isSourceFile(declaration)) {
+    if (util.isDeclareModule(declaration)) {
+      // declare module "xxx" {}
+      return declaration;
+    }
+
+    declaration = declaration.parent;
+  }
+
+  return valueDeclaration.getSourceFile();
+}
+
+export function getExportsBySymbol(node: ts.Node) {
+  const symbol = util.getSymbol(node);
+  if (symbol && symbol.exports) {
+    return symbol.exports.get(ts.InternalSymbolName.ExportEquals);
+  }
+}
+
+// get reference typeDom by name
 export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
   let interfaceName = util.getText(node);
   const symbol = util.getSymbol(node);
   if (!symbol) return;
 
+  const checkAssignEqual = (node: ts.Node, name: string) => {
+    const symbol = util.getSymbol(node)!;
+    const exportAssignment = symbol.exports!.get(ts.InternalSymbolName.ExportEquals);
+    return exportAssignment &&
+      util.getText((exportAssignment.valueDeclaration as ts.ExportAssignment).expression) === name;
+  };
+
   const referenceModule = getReferenceModule(symbol);
   if (referenceModule) {
-    if (typeof referenceModule === 'string') {
-      collectImportModule(referenceModule, interfaceName);
+    if (util.isDeclareModule(referenceModule)) {
+      const modName = util.getText(referenceModule.name);
+      if (checkAssignEqual(referenceModule, interfaceName)) {
+        collectImportModule(interfaceName = modName);
+      } else {
+        collectImportModule(modName, interfaceName);
+      }
     } else if (ts.isSourceFile(referenceModule)) {
       const modName = getModNameByPath(referenceModule.fileName);
       if (modName) {
-        collectImportModule(modName, interfaceName, referenceModule.fileName);
+        if (checkAssignEqual(referenceModule, interfaceName)) {
+          collectImportModule(interfaceName = modName, undefined, referenceModule.fileName);
+        } else {
+          collectImportModule(modName, interfaceName, referenceModule.fileName);
+        }
       } else {
         return;
       }
@@ -823,9 +841,14 @@ export function getFunctionLikeTypeDom(node: ts.FunctionLike, fnName?: string) {
 }
 
 export function getModNameByPath(fileName: string) {
+  if (env.ambientModNames.includes(fileName)) {
+    return fileName;
+  }
+
   const extname = '.d.ts';
   const ext = path.extname(fileName);
   fileName += ext ? '' : extname;
+
   if (!fileName.endsWith(extname) || !fs.existsSync(fileName)) {
     return;
   }
@@ -916,6 +939,10 @@ function prepareEnv(file: string) {
   }
 
   const exportDefaultName = getAnonymousName();
+  const checker = program.getTypeChecker();
+  const sourceFile = program.getSourceFile(file)!;
+  const ambientMods = checker.getAmbientModules();
+  const ambientModNames = ambientMods.map(mod => mod.escapedName.toString().replace(/^"|"$/g, ''));
 
   // init env object
   env = {
@@ -923,13 +950,14 @@ function prepareEnv(file: string) {
     deps: {},
     flags: CreateDtsFlags.None,
     program,
-    checker: program.getTypeChecker(),
-    sourceFile: program.getSourceFile(file)!,
+    checker,
+    sourceFile,
     declaration: {
       import: [],
       fragment: [],
       export: [],
     },
+    ambientModNames,
     importCache: {},
     declarationList: [],
     cacheDeclarationList: [],
