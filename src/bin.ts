@@ -12,7 +12,7 @@ import { create, CreateDtsFlags } from './';
 const program = new Command()
   .version(packInfo.version, '-v, --version')
   .usage('[options] <file>')
-  .option('-d, --dist [path]', 'Create dts to giving path( default to the same dir with file )')
+  .option('-d, --dist [path]', 'Create dts to giving path (default to the same dir as file)')
   .option('-t, --terminal', 'Output the result to terminal instead of writing file to disk')
   .option('--ignore-private', 'Private properties are also being export');
 
