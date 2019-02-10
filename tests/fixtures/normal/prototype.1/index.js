@@ -38,6 +38,8 @@ if (rpp) {
   Router.aaa = () => 123;
 }
 
+rpp.ccc = rpp.ddd = rpp.eee = () => 123;
+
 // static method
 Router.url = url => {
   return url;

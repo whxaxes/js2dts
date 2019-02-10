@@ -87,5 +87,9 @@ describe('index.test.ts', () => {
     it('plugin#egg-core', async () => {
       await checkDts('plugin/egg-core', false);
     });
+
+    it('plugin#urllib', async () => {
+      await checkDts('plugin/urllib', false);
+    });
   });
 });

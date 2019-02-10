@@ -431,6 +431,10 @@ export const util = {
   isImportDeclaration(node: DeclarationBase): node is ImportDeclaration {
     return (node as ImportDeclaration).kind === 'import';
   },
+
+  isCallSignature(node): node is CallSignature {
+    return (node as CallSignature).kind === 'call-signature';
+  },
 };
 
 export const create = {

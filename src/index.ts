@@ -6,6 +6,10 @@ import * as dom from './dom';
 import { isEqual } from 'lodash';
 let uniqId = 100;
 
+interface PlainObj<T = any> {
+  [key: string]: T;
+}
+
 interface Declaration {
   import: dom.Import[];
   export: dom.TopLevelDeclaration[];
@@ -149,22 +153,22 @@ export function getTypeQueryTypeDom(typeNode: ts.TypeQueryNode) {
 
 export function getTypeLiteralTypeDom(typeNode: ts.TypeLiteralNode, flags: GetTypeDomFlags = GetTypeDomFlags.None) {
   const members = typeNode.members;
-  const interfaceMembers: dom.ObjectTypeMember[] = [];
+  const objectType = dom.create.objectType([]);
   members.forEach(member => {
     if (!member.name) return;
     const name = util.getText(member.name);
     const typeDom = getPropTypeDomByNode(name, member);
     addJsDocToTypeDom(typeDom, member.name);
-    interfaceMembers.push(typeDom as dom.ObjectTypeMember);
+    addMemberToObj(objectType, typeDom, { dropDuplicate: true });
   });
 
   if (flags & GetTypeDomFlags.TypeLiteralInline) {
-    return dom.create.objectType(interfaceMembers);
+    return objectType;
   } else {
-    let interfaceDeclare = env.interfaceList.find(obj => isEqual(obj.members, interfaceMembers));
+    let interfaceDeclare = env.interfaceList.find(obj => isEqual(obj.members, objectType.members));
     if (!interfaceDeclare) {
       interfaceDeclare = createInterfaceInNs(getAnonymousName());
-      interfaceDeclare.members = interfaceMembers;
+      interfaceDeclare.members = objectType.members;
       env.interfaceList.push(interfaceDeclare);
     }
 
@@ -285,14 +289,6 @@ export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
   }
 
   eachPropertiesTypeDom<ts.ClassElement>(node.members, (name, member) => {
-    const cache = new Map();
-    const addProp = (t: dom.ClassMember) => {
-      const name = dom.util.isConstructorDeclaration(t) ? t.kind : t.name;
-      if (cache.has(name)) return;
-      cache.set(name, true);
-      classDeclaration.members.push(t);
-    };
-
     if (ts.isConstructorDeclaration(member)) {
       // constructor
       const constructorTypeDom = dom.create.constructor(getFunctionParametersTypeDom(member.parameters));
@@ -301,11 +297,11 @@ export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
         // check statement in constructor
         findAssignToThis(member.body.statements)
           .forEach(({ name, node }) => {
-            addProp(getPropTypeDomByNode(name, node));
+            addMemberToObj(classDeclaration, getPropTypeDomByNode(name, node), { dropDuplicate: true });
           });
       }
 
-      addProp(constructorTypeDom);
+      addMemberToObj(classDeclaration, constructorTypeDom);
       return;
     }
 
@@ -316,7 +312,7 @@ export function getClassLikeTypeDom(node: ts.ClassLikeDeclaration) {
 
     const typeDom = getPropTypeDomByNode(name, member);
     addJsDocToTypeDom(typeDom, member);
-    addProp(typeDom);
+    addMemberToObj(classDeclaration, typeDom, { dropDuplicate: true });
   });
 
   return classDeclaration;
@@ -334,40 +330,53 @@ interface FindAssignResult {
 // find xxx.xxx =, let xxx =, xxx =
 export function findAssign(statements: ts.NodeArray<ts.Statement>, cb: (obj: FindAssignResult) => void) {
   statements.forEach(statement => {
+    const checkValue = (node?: ts.Expression) => {
+      if (node && ts.isBinaryExpression(node)) {
+        checkBinary(node);
+        return checkValue(node.right);
+      } else {
+        return node;
+      }
+    };
+
+    const checkBinary = (node: ts.BinaryExpression) => {
+      if (
+        ts.isPropertyAccessExpression(node.left) &&
+        ts.isIdentifier(node.left.name)
+      ) {
+        // xxx.xxx = xx
+        cb({
+          obj: node.left.expression,
+          key: node.left.name,
+          value: checkValue(node.right),
+          node: statement,
+        });
+      } else if (ts.isIdentifier(node.left)) {
+        // xxx = xx
+        cb({
+          key: node.left,
+          value: checkValue(node.right),
+          node: statement,
+        });
+      } else if (
+        ts.isElementAccessExpression(node.left) &&
+        ts.isStringLiteral(node.left.argumentExpression)
+      ) {
+        // xxx['sss'] = xxx
+        cb({
+          obj: node.left.expression,
+          key: ts.createIdentifier(node.left.argumentExpression.text),
+          value: checkValue(node.right),
+          node: statement,
+        });
+      }
+    };
+
     if (
       ts.isExpressionStatement(statement) &&
       ts.isBinaryExpression(statement.expression)
     ) {
-      if (
-        ts.isPropertyAccessExpression(statement.expression.left) &&
-        ts.isIdentifier(statement.expression.left.name)
-      ) {
-        // xxx.xxx = xx
-        cb({
-          obj: statement.expression.left.expression,
-          key: statement.expression.left.name,
-          value: statement.expression.right,
-          node: statement,
-        });
-      } else if (ts.isIdentifier(statement.expression.left)) {
-        // xxx = xx
-        cb({
-          key: statement.expression.left,
-          value: statement.expression.right,
-          node: statement,
-        });
-      } else if (
-        ts.isElementAccessExpression(statement.expression.left) &&
-        ts.isStringLiteral(statement.expression.left.argumentExpression)
-      ) {
-        // xxx['sss'] = xxx
-        cb({
-          obj: statement.expression.left.expression,
-          key: ts.createIdentifier(statement.expression.left.argumentExpression.text),
-          value: statement.expression.right,
-          node: statement,
-        });
-      }
+      checkBinary(statement.expression);
     } else if (ts.isVariableStatement(statement)) {
       // const xxx = xx
       statement.declarationList.declarations.forEach(declare => {
@@ -375,7 +384,7 @@ export function findAssign(statements: ts.NodeArray<ts.Statement>, cb: (obj: Fin
           cb({
             init: true,
             key: declare.name,
-            value: declare.initializer,
+            value: checkValue(declare.initializer),
             node: declare,
           });
         }
@@ -529,7 +538,7 @@ export function addJsDocToTypeDom(typeDom: dom.DeclarationBase, originalNode: ts
 
 export function eachPropertiesTypeDom<T extends ts.ClassElement | ts.ObjectLiteralElement>(
   nodeList: ts.NodeArray<T>,
-  callback: (propName: string, d: T, propList: string[]) => void,
+  callback: (propName: string, d: T) => void,
 ) {
   const propertyNameList: string[] = [];
   nodeList.forEach(member => {
@@ -543,9 +552,9 @@ export function eachPropertiesTypeDom<T extends ts.ClassElement | ts.ObjectLiter
     }
 
     propertyNameList.push(propertyName);
-
-    callback(propertyName, member, propertyNameList);
+    callback(propertyName, member);
   });
+  return propertyNameList;
 }
 
 // get property type dom by ts.Node
@@ -721,6 +730,7 @@ export function addDeclarations(node: ts.Declaration) {
 }
 
 export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.ParameterDeclaration>) {
+  const nameCache: PlainObj<number> = {};
   const params: dom.Parameter[] = parameters.map(param => {
     let type = param.type;
     if (!type) {
@@ -736,8 +746,17 @@ export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.Paramet
       flags |= dom.ParameterFlags.Rest;
     }
 
+    // prevent duplicate
+    let name = util.getText(param.name) || getAnonymousName();
+    if (nameCache[name] === undefined) {
+      nameCache[name] = 0;
+    } else {
+      nameCache[name]++;
+      name = `${name}_${nameCache[name]}`;
+    }
+
     return dom.create.parameter(
-      util.getText(param.name) || getAnonymousName(),
+      name,
       getTypeDom(type) || dom.type.any,
       flags,
     );
@@ -754,6 +773,34 @@ export function checkIsPrivate(node: ts.Node, name?: string) {
 
   return !!util.findJsDocTag(node, 'private') ||
     (name && name.startsWith('_'));
+}
+
+// add member to obj
+export function addMemberToObj(
+  obj: dom.ClassDeclaration | dom.InterfaceDeclaration | dom.ObjectType,
+  member: dom.ClassMember | dom.ObjectTypeMember,
+  opt: { preInsert?: boolean; dropDuplicate?: boolean; } = {},
+) {
+  const declaration = obj as dom.ClassDeclaration;
+  if ((member as dom.PropertyDeclaration).name) {
+    const index = declaration.members.findIndex(m => {
+      return (m as dom.PropertyDeclaration).name === (member as dom.PropertyDeclaration).name;
+    });
+
+    if (index >= 0) {
+      if (opt.dropDuplicate) {
+        return;
+      }
+
+      obj.members.splice(index, 1);
+    }
+  }
+
+  if (opt.preInsert) {
+    declaration.members.unshift(member as dom.ClassMember);
+  } else {
+    declaration.members.push(member as dom.ClassMember);
+  }
 }
 
 // try to find definition of function prototype
@@ -790,7 +837,7 @@ export function tryParseFunctionAsClass(node: ts.FunctionDeclaration) {
         if (dom.util.isObjectType(typeDom)) {
           // xxx.prototype = {}
           cleanAssignment();
-          typeDom.members.forEach(member => classDeclare.members.push(member as dom.ClassMember));
+          typeDom.members.forEach(member => addMemberToObj(classDeclare, member));
         } else if (dom.util.isNamedTypeReference(typeDom)) {
           // xxx.prototype = new XXX();
           cleanAssignment();
@@ -806,7 +853,7 @@ export function tryParseFunctionAsClass(node: ts.FunctionDeclaration) {
         const typeDom = getPropTypeDomByNode(propName, typeNode);
         if (isStaticProp) typeDom.flags = dom.DeclarationFlags.Static;
         addJsDocToTypeDom(typeDom, node);
-        classDeclare.members.push(typeDom);
+        addMemberToObj(classDeclare, typeDom);
       }
     });
 
@@ -814,12 +861,15 @@ export function tryParseFunctionAsClass(node: ts.FunctionDeclaration) {
       if (node.body && node.body.statements.length) {
         // find this assignment in constructor
         findAssignToThis(node.body.statements).forEach(({ name, node }) => {
-          classDeclare.members.unshift(getPropTypeDomByNode(name, node));
+          addMemberToObj(classDeclare, getPropTypeDomByNode(name, node));
         });
       }
 
       // treat function as constructor
-      classDeclare.members.unshift(dom.create.constructor(getFunctionParametersTypeDom(node.parameters)));
+      addMemberToObj(classDeclare, dom.create.constructor(getFunctionParametersTypeDom(node.parameters)), {
+        preInsert: true,
+      });
+
       return classDeclare;
     }
   }
