@@ -19,9 +19,15 @@ interface ImportCacheElement {
   realPath: string;
 }
 
+interface CreateOptions {
+  dist?: string;
+  flags?: CreateDtsFlags;
+}
+
 // runtime env
 interface Env {
   file: string;
+  dist: string;
   flags: CreateDtsFlags;
   program: ts.Program;
   checker: ts.TypeChecker;
@@ -38,6 +44,7 @@ interface Env {
   deps: { [key: string]: { env: Env; namespace: dom.NamespaceDeclaration } };
   ambientModNames: string[];
   toString: () => string;
+  write: () => string;
 }
 
 let env: Env;
@@ -875,8 +882,7 @@ export function getModNameByPath(fileName: string) {
 
     return modName;
   } else {
-    const sourceFileDir = path.dirname(env.sourceFile.fileName);
-    const from = path.relative(sourceFileDir, path.join(dir, basename));
+    const from = path.relative(path.dirname(env.dist), path.join(dir, basename));
     return from.startsWith('.') ? from : `./${from}`;
   }
 }
@@ -939,7 +945,7 @@ export function createInterfaceInNs(name: string, namespace: dom.NamespaceDeclar
 }
 
 // prepare env
-function prepareEnv(file: string) {
+function prepareEnv(file: string, options?: CreateOptions) {
   const program = ts.createProgram([ file ], {
     target: ts.ScriptTarget.ES2017,
     module: ts.ModuleKind.CommonJS,
@@ -958,11 +964,16 @@ function prepareEnv(file: string) {
   const ambientMods = checker.getAmbientModules();
   const ambientModNames = ambientMods.map(mod => mod.escapedName.toString().replace(/^"|"$/g, ''));
 
+  // if options is undefined, use topEnv instead
+  const topEnv = envStack[0];
+  options = options || topEnv || {};
+
   // init env object
   env = {
     file,
+    dist: options.dist || `${path.dirname(file)}/${path.basename(file, path.extname(file))}.d.ts`,
+    flags: options.flags === undefined ? CreateDtsFlags.None : options.flags,
     deps: {},
-    flags: CreateDtsFlags.None,
     program,
     checker,
     sourceFile,
@@ -989,6 +1000,13 @@ function prepareEnv(file: string) {
         dom.emit(this.declaration.fragment),
       ].join('');
     },
+
+    // write file
+    write() {
+      const content = this.toString();
+      fs.writeFileSync(this.dist, content);
+      return content;
+    },
   };
 
   // cache env
@@ -1006,7 +1024,7 @@ function endEnv() {
 }
 
 // create dts for file
-export function create(file: string) {
+export function create(file: string, options?: CreateOptions) {
   // check cache
   const cacheEnv = envCache[file];
   if (cacheEnv) {
@@ -1014,7 +1032,7 @@ export function create(file: string) {
   }
 
   // start program
-  prepareEnv(file);
+  prepareEnv(file, options);
 
   const declaration = env.declaration;
   if (!env.sourceFile) {
