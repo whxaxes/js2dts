@@ -53,9 +53,15 @@ typings/
 
 # Yarn Integrity file
 .yarn-integrity
+*lock
 
 # dotenv environment variables file
 .env
 
 # next.js build output
 .next
+
+dist/
+tests/fixtures/**/check.js
+tests/fixtures/**/tsconfig.json
+tests/fixtures/**/*.d.ts

@@ -1,0 +1,7 @@
+{
+  "debug.node.autoAttach": "on",
+  "files.exclude": {
+    "tests/fixtures/**/check.js": true,
+    "tests/fixtures/**/tsconfig.json": true
+  }
+}

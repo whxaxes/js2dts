@@ -1,0 +1,14 @@
+sudo: false
+language: node_js
+node_js:
+  - '8'
+  - '10'
+install:
+  - npm i npminstall && npminstall
+os:
+  - osx
+  - linux
+script:
+  - npm run cov
+after_script:
+  - npminstall codecov && codecov
