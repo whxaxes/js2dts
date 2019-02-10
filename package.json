@@ -1,8 +1,13 @@
 {
   "name": "js2dts",
-  "version": "1.0.0",
-  "description": "Generate dts for js",
-  "main": "index.js",
+  "version": "0.0.1",
+  "description": "dts generator for js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "j2d": "dist/bin.js",
+    "js2dts": "dist/bin.js"
+  },
   "scripts": {
     "build": "tsc -d",
     "build:w": "tsc -d -w",
@@ -14,16 +19,24 @@
     "type": "git",
     "url": "git+https://github.com/whxaxes/js2dts.git"
   },
+  "keywords": [
+    "js2dts",
+    "typescript"
+  ],
+  "files": [
+    "dist"
+  ],
   "author": "whxaxes <whxaxes@gmail.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/whxaxes/js2dts/issues"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
   "homepage": "https://github.com/whxaxes/js2dts#readme",
   "dependencies": {
-    "dts-dom": "^3.1.0",
-    "dts-gen": "^0.5.7",
-    "globby": "^8.0.1",
+    "commander": "^2.19.0",
     "mkdirp": "^0.5.1",
     "tslib": "^1.9.3",
     "typescript": "^3.2.2"
@@ -41,6 +54,7 @@
     "del": "^3.0.0",
     "del-cli": "^1.1.0",
     "egg": "^2.15.1",
+    "globby": "^8.0.1",
     "jest": "^23.6.0",
     "lodash": "^4.17.11",
     "ts-jest": "^23.10.5",
