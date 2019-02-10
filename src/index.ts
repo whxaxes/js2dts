@@ -57,6 +57,7 @@ const envCache: { [key: string]: Env } = {};
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
 const typeRoot = path.resolve(nodeModulesRoot, './@types/');
+const fromLibRE = /typescript\/lib\/lib(\.\w+)*\.d\.ts$/;
 
 // get typedom flags
 export enum GetTypeDomFlags {
@@ -619,7 +620,7 @@ export function getReferenceModule(symbol: ts.Symbol) {
   const symbolDeclaration = symbol.valueDeclaration || symbol.declarations[0];
   if (!symbolDeclaration) return false;
   const declarationFile = symbolDeclaration.getSourceFile().fileName;
-  const isFromLib = declarationFile.startsWith(path.join(nodeModulesRoot, 'typescript/lib/lib.'));
+  const isFromLib = declarationFile.match(fromLibRE);
   const isFromNodeModule = declarationFile.startsWith(nodeModulesRoot);
   if (isFromLib) {
     // build-in module
