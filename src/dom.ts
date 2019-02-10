@@ -1202,7 +1202,7 @@ export function getWriter(
         case 'class':
         case 'interface':
         case 'alias':
-          print(e.name);
+          print(util.getFullName(e));
           break;
 
         case 'name':
@@ -1505,7 +1505,7 @@ export function getWriter(
 
   function writeImportNamed(i: ImportNamedDeclaration) {
     start('import { ');
-    print(i.names.map(obj => (`${obj.name}${ obj.as ? ` as ${obj.as}` : '' }`)).join(', '));
+    print(i.names.map(obj => (`${obj.name}${ (obj.as && obj.as !== obj.name) ? ` as ${obj.as}` : '' }`)).join(', '));
     print(` } from '${i.from}';`);
     newline();
   }

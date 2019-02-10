@@ -91,5 +91,9 @@ describe('index.test.ts', () => {
     it('plugin#urllib', async () => {
       await checkDts('plugin/urllib', false);
     });
+
+    it('plugin#mm', async () => {
+      await checkDts('plugin/mm', false);
+    });
   });
 });
