@@ -1,6 +1,13 @@
 import * as ts from 'typescript';
 import * as path from 'path';
 
+export function formatName(name: string) {
+  name = name
+    .replace(/[\/._-][a-z]/gi, s => s.substring(1).toUpperCase())
+    .replace(/\/|\./g, '');
+  return name[0].toUpperCase() + name.substring(1);
+}
+
 export function getTypeArguments(node: ts.TypeNode): ts.TypeNode[] | undefined {
   return (node as any).typeArguments;
 }

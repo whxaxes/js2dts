@@ -376,6 +376,17 @@ export const util = {
       : type.name;
   },
 
+  typeToDeclaration(name: string, d: Type, flags: DeclarationFlags = DeclarationFlags.None) {
+    let type: DeclarationBase;
+    if (util.isFunctionType(d)) {
+      type = create.function(name, d.parameters, d.returnType);
+    } else {
+      type = create.const(name, d);
+    }
+    type.flags = flags;
+    return type;
+  },
+
   isNamedDeclarationBase(node: DeclarationBase): node is NamedDeclarationBase {
     return typeof (node as NamedDeclarationBase).name === 'string';
   },
@@ -434,6 +445,10 @@ export const util = {
 
   isCallSignature(node): node is CallSignature {
     return (node as CallSignature).kind === 'call-signature';
+  },
+
+  isConstDeclaration(node): node is ConstDeclaration {
+    return (node as ConstDeclaration).kind === 'const';
   },
 };
 
@@ -1131,14 +1146,7 @@ export function getWriter(
           tab();
           writeTypeParameters(member.typeParameters);
           print('(');
-          let first = true;
-          for (const param of member.parameters) {
-            if (!first) print(', ');
-            first = false;
-            print(param.name);
-            print(': ');
-            writeReference(param.type);
-          }
+          writeDelimited(member.parameters, ', ', writeParameter);
           print('): ');
           writeReference(member.returnType);
           print(';');
@@ -1152,12 +1160,7 @@ export function getWriter(
           if (hasFlag(member.flags, DeclarationFlags.Optional)) print('?');
           writeTypeParameters(member.typeParameters);
           print('(');
-          let first = true;
-          for (const param of member.parameters) {
-            if (!first) print(', ');
-            first = false;
-            writeParameter(param);
-          }
+          writeDelimited(member.parameters, ', ', writeParameter);
           print('): ');
           writeReference(member.returnType);
           print(';');
@@ -1284,12 +1287,7 @@ export function getWriter(
     startWithDeclareOrExport(`interface ${d.name} `, d.flags, true);
     if (d.baseTypes && d.baseTypes.length) {
       print('extends ');
-      let first = true;
-      for (const baseType of d.baseTypes) {
-        if (!first) print(', ');
-        writeReference(baseType);
-        first = false;
-      }
+      writeDelimited<ObjectTypeReference>(d.baseTypes, ', ', writeReference);
     }
     printObjectTypeMembers(d.members);
     newline();

@@ -28,6 +28,12 @@ interface CreateOptions {
   flags?: CreateDtsFlags;
 }
 
+enum ExportFlags {
+  None = 0,
+  ExportEqual = 1 << 0,
+  Export = 1 << 1,
+}
+
 // runtime env
 interface Env {
   file: string;
@@ -40,13 +46,12 @@ interface Env {
   importCache: { [key: string]: ImportCacheElement };
   declareCache: Array<{ node: ts.Declaration, name: string }>;
   publicNames: PlainObj<number>;
-  exportDefaultName: string;
-  exportNsName: string;
-  exportInterface?: dom.InterfaceDeclaration;
-  exportNamespace: dom.NamespaceDeclaration;
+  exportDefaultName?: string;
+  exportNamespace?: dom.NamespaceDeclaration;
   interfaceList: dom.InterfaceDeclaration[];
   deps: { [key: string]: { env: Env; namespace: dom.NamespaceDeclaration } };
   ambientModNames: string[];
+  exportFlags: ExportFlags;
   toString: () => string;
   write: () => string;
 }
@@ -211,7 +216,7 @@ export function createDepsByFile(file: string) {
   const customEnv = create(file);
 
   // add declaration to namespace
-  const namespace = dom.create.namespace(getAnonymousName());
+  const namespace = dom.create.namespace(customEnv.exportDefaultName!);
   namespace.members.push(dom.create.comment(path.relative(process.cwd(), file)));
   customEnv.declaration.fragment.forEach(decl => {
     decl.flags = dom.DeclarationFlags.Export;
@@ -234,8 +239,8 @@ export function getImportTypeDom(typeNode: ts.ImportTypeNode) {
     } else {
       const filePath = util.resolveUrl(importPath);
       if (filePath && path.extname(filePath) === '.js') {
-        const { env, namespace } = createDepsByFile(filePath);
-        exportName = `${namespace.name}.${env.exportDefaultName}`;
+        const { namespace } = createDepsByFile(filePath);
+        exportName = namespace.name;
       }
     }
 
@@ -648,13 +653,6 @@ export function getReferenceModule(symbol: ts.Symbol) {
   return symbolDeclaration.getSourceFile();
 }
 
-export function getExportsBySymbol(node: ts.Node) {
-  const symbol = util.getSymbol(node);
-  if (symbol && symbol.exports) {
-    return symbol.exports.get(ts.InternalSymbolName.ExportEquals);
-  }
-}
-
 // get reference typeDom by name
 export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
   let interfaceName = util.getText(node);
@@ -703,22 +701,8 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
           const varDeclaration = createVariableDeclaration(interfaceName, referenceModule);
           env.declaration.fragment.push(varDeclaration);
         } else if (ts.isPropertyAccessExpression(referenceModule)) {
-          const symbol = env.checker.getSymbolAtLocation(referenceModule.name);
-          if (symbol && symbol.exports) {
-            const members: dom.ObjectTypeMember[] = [];
-            symbol.exports.forEach(obj => {
-              const typeNode = getTypeNodeAtLocation(obj.valueDeclaration);
-              members.push(dom.create.property(
-                obj.getName(),
-                getTypeDom(typeNode),
-              ));
-            });
-            const nsInterface = createInterfaceWithCache(members);
-            const varDeclaration = dom.create.const(interfaceName, nsInterface);
-            env.declaration.fragment.push(varDeclaration);
-          } else {
-            return;
-          }
+          const varDeclaration = dom.create.const(interfaceName, getPropertyAccessTypeDom(referenceModule));
+          env.declaration.fragment.push(varDeclaration);
         } else {
           return;
         }
@@ -729,6 +713,24 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
   }
 
   return dom.create.namedTypeReference(interfaceName);
+}
+
+export function getPropertyAccessTypeDom(node: ts.PropertyAccessExpression) {
+  const symbol = env.checker.getSymbolAtLocation(node.name);
+  if (symbol && symbol.exports) {
+    const members: dom.ObjectTypeMember[] = [];
+    symbol.exports.forEach(obj => {
+      const typeNode = getTypeNodeAtLocation(obj.valueDeclaration);
+      members.push(dom.create.property(
+        obj.getName(),
+        getTypeDom(typeNode),
+      ));
+    });
+    return createInterfaceWithCache(members);
+  } else {
+    const typeNode = getTypeNodeAtLocation((node.parent as ts.BinaryExpression).right);
+    return getTypeDom(typeNode) || dom.type.any;
+  }
 }
 
 export function getReferenceTypeDom(typeNode: ts.TypeReferenceNode) {
@@ -971,14 +973,10 @@ function collectImportModule(
     return existImportObj.as!;
   } else {
     if (!importObj.default) {
-      importObj.default = getDeclName(
-        name
-          .replace(/\/(\w)/g, (_, k: string) => k.toUpperCase())
-          .replace(/\/|\./g, ''),
-      );
+      importObj.default = getDeclName(util.formatName(name));
     }
 
-    return importObj.default;
+    return importObj.default!;
   }
 }
 
@@ -1002,14 +1000,13 @@ export function createVariableDeclaration(constName: string, node: ts.VariableDe
 }
 
 // get decl name
-export function getDeclName(name: string) {
-  let index: number;
+export function getDeclName(name: string): string {
   if (env.publicNames[name] === undefined) {
-    index = env.publicNames[name] = 0;
+    env.publicNames[name] = 0;
     return name;
   } else {
-    index = env.publicNames[name]++;
-    return `${name}_${index}`;
+    env.publicNames[name]++;
+    return getDeclName(`${name}_${env.publicNames[name]}`);
   }
 }
 
@@ -1018,18 +1015,38 @@ export function createInterfaceWithCache(members: dom.ObjectTypeMember[]) {
   if (interfaceDeclare) {
     return interfaceDeclare;
   }
-  const nsi = createInterfaceInNs(getAnonymousName());
+  const nsi = createExportInterface(getAnonymousName());
   nsi.members = members;
   env.interfaceList.push(nsi);
   return nsi;
 }
 
-export function createInterfaceInNs(name: string, namespace: dom.NamespaceDeclaration = env.exportNamespace) {
+export function createExportInterface(name: string) {
   const interfaceType = dom.create.interface(name);
-  interfaceType.namespace = namespace;
+  if (env.exportFlags & ExportFlags.ExportEqual) {
+    interfaceType.namespace = env.exportNamespace;
+    env.exportNamespace!.members.push(interfaceType);
+  } else {
+    env.declaration.fragment.push(interfaceType);
+  }
   interfaceType.flags = dom.DeclarationFlags.Export;
-  namespace.members.push(interfaceType);
   return interfaceType;
+}
+
+export function createExportNameByFile(file: string) {
+  let name = path.basename(file, path.extname(file));
+  const pkgInfoPath = path.resolve(path.dirname(file), 'package.json');
+  if (fs.existsSync(pkgInfoPath)) {
+    const pkgInfo = JSON.parse(fs.readFileSync(pkgInfoPath).toString());
+    name = pkgInfo.name || name;
+  }
+
+  if (name === 'index') {
+    name = path.basename(path.dirname(file));
+  }
+
+  // add _ for prevent duplicate with global declaration
+  return getDeclName(`_${util.formatName(name)}`);
 }
 
 // prepare env
@@ -1046,7 +1063,6 @@ function prepareEnv(file: string, options?: CreateOptions) {
     envStack.push(env);
   }
 
-  const exportDefaultName = getAnonymousName();
   const checker = program.getTypeChecker();
   const sourceFile = program.getSourceFile(file)!;
   const ambientMods = checker.getAmbientModules();
@@ -1073,10 +1089,7 @@ function prepareEnv(file: string, options?: CreateOptions) {
     ambientModNames,
     declareCache: [],
     interfaceList: [],
-    exportDefaultName,
-    exportNsName: getAnonymousName(),
-    exportInterface: undefined,
-    exportNamespace: dom.create.namespace(exportDefaultName),
+    exportFlags: ExportFlags.None,
 
     // common obj in all env
     publicNames: topEnv ? topEnv.publicNames : {},
@@ -1137,19 +1150,42 @@ export function create(file: string, options?: CreateOptions) {
     return endEnv();
   }
 
+  env.exportFlags = exportDefaultNode
+    ? ExportFlags.ExportEqual
+    : ExportFlags.Export;
+
+  let exportList: dom.InterfaceDeclaration | undefined;
+  env.exportDefaultName = createExportNameByFile(env.file);
+  env.exportNamespace = dom.create.namespace(env.exportDefaultName);
+
   // export list
   if (exportNodeList.length) {
-    env.exportInterface = createInterfaceInNs(env.exportNsName);
+    // add export name to publicNames
+    if (!exportDefaultNode) {
+      exportNodeList.forEach(({ name }) => getDeclName(name));
+    }
+
     exportNodeList.map(({ name, node, originalNode }) => {
-      const typeNode = getTypeNodeAtLocation(node);
-      const typeDom = getTypeDom(typeNode) || dom.type.any;
       if (checkIsPrivate(node, name)) {
         return;
       }
 
-      const memberDom: dom.ObjectTypeMember = dom.create.property(name, typeDom);
-      addJsDocToTypeDom(memberDom, originalNode);
-      env.exportInterface!.members.push(memberDom);
+      const typeNode = getTypeNodeAtLocation(node);
+      let typeDom = getTypeDom(typeNode) || dom.type.any;
+      if (env.exportFlags & ExportFlags.Export) {
+        typeDom = dom.util.typeToDeclaration(name, typeDom, dom.DeclarationFlags.Export);
+        addJsDocToTypeDom(typeDom, originalNode);
+        env.declaration.fragment.push(typeDom);
+      } else {
+        if (!exportList) {
+          exportList = dom.create.interface(getAnonymousName());
+          env.declaration.fragment.push(exportList);
+        }
+
+        const memberDom: dom.ObjectTypeMember = dom.create.property(name, typeDom);
+        addJsDocToTypeDom(memberDom, originalNode);
+        exportList.members.push(memberDom);
+      }
     });
   }
 
@@ -1157,27 +1193,13 @@ export function create(file: string, options?: CreateOptions) {
   if (exportDefaultNode) {
     const typeNode = getTypeNodeAtLocation(exportDefaultNode);
     let typeDom = getTypeDom(typeNode) || dom.type.any;
+    typeDom = exportList ? dom.create.intersection([ typeDom, exportList ]) : typeDom;
+    typeDom = dom.create.const(env.exportDefaultName, typeDom);
+    declaration.fragment.push(typeDom);
 
-    if (env.exportInterface) {
-      typeDom = dom.create.intersection([
-        typeDom,
-        dom.create.namedTypeReference(env.exportInterface),
-      ]);
-    }
-
-    declaration.fragment.push(dom.create.const(env.exportDefaultName, typeDom));
-  } else if (exportNodeList.length) {
-    declaration.fragment.push(dom.create.const(
-      env.exportDefaultName,
-      dom.create.namedTypeReference(env.exportInterface!),
-    ));
+    // add export=
+    declaration.export.push(dom.create.exportEquals(env.exportDefaultName));
   }
-
-  // add export=
-  declaration.export.push(dom.create.exportEquals(env.exportDefaultName));
-
-  // add export namespace
-  declaration.fragment.push(env.exportNamespace);
 
   // add import list
   Object.keys(env.importCache).forEach(k => {
@@ -1193,6 +1215,11 @@ export function create(file: string, options?: CreateOptions) {
       declaration.import.push(dom.create.importNamed(obj.list, obj.from));
     }
   });
+
+  // add export namespace
+  if (env.exportNamespace && env.exportNamespace.members.length) {
+    declaration.fragment.push(env.exportNamespace);
+  }
 
   return endEnv();
 }
