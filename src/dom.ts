@@ -380,6 +380,9 @@ export const util = {
     let type: DeclarationBase;
     if (util.isFunctionType(d)) {
       type = create.function(name, d.parameters, d.returnType);
+    } else if (util.isTopLevelDeclaration(d)) {
+      d.flags = (d.flags || DeclarationFlags.None) | flags;
+      return d;
     } else {
       type = create.const(name, d);
     }
@@ -387,59 +390,67 @@ export const util = {
     return type;
   },
 
-  isNamedDeclarationBase(node: DeclarationBase): node is NamedDeclarationBase {
+  isNamedDeclarationBase(node): node is NamedDeclarationBase {
     return typeof (node as NamedDeclarationBase).name === 'string';
   },
 
-  isTypeofReference(node: Type): node is TypeofReference {
+  isTypeofReference(node): node is TypeofReference {
     return (node as TypeofReference).kind === 'typeof';
   },
 
-  isFunctionType(node: Type): node is FunctionType {
+  isFunctionType(node): node is FunctionType {
     return (node as FunctionType).kind === 'function-type';
   },
 
-  isInterfaceDeclaration(node: DeclarationBase): node is InterfaceDeclaration {
+  isInterfaceDeclaration(node): node is InterfaceDeclaration {
     return (node as InterfaceDeclaration).kind === 'interface';
   },
 
-  isNamespaceDeclaration(node: DeclarationBase): node is NamespaceDeclaration {
+  isNamespaceDeclaration(node): node is NamespaceDeclaration {
     return (node as NamespaceDeclaration).kind === 'namespace';
   },
 
-  isClassDeclaration(node: DeclarationBase): node is ClassDeclaration {
+  isClassDeclaration(node): node is ClassDeclaration {
     return (node as ClassDeclaration).kind === 'class';
   },
 
-  isObjectType(node: Type): node is ObjectType {
+  isObjectType(node): node is ObjectType {
     return (node as ObjectType).kind === 'object';
   },
 
-  isNamedTypeReference(node: Type): node is NamedTypeReference {
+  isNamedTypeReference(node): node is NamedTypeReference {
     return (node as NamedTypeReference).kind === 'name';
   },
 
-  isConstructorDeclaration(node: DeclarationBase): node is ConstructorDeclaration {
+  isConstructorDeclaration(node): node is ConstructorDeclaration {
     return (node as ConstructorDeclaration).kind === 'constructor';
   },
 
-  isImportAllDeclaration(node: DeclarationBase): node is ImportAllDeclaration {
+  isImport(node): node is Import {
+    return util.isImportAllDeclaration(node) ||
+      util.isImportDeclaration(node) ||
+      util.isImportNamedDeclaration(node) ||
+      util.isImportDefaultDeclaration(node) ||
+      util.isImportEqualsDeclaration(node);
+  },
+
+  isImportAllDeclaration(node): node is ImportAllDeclaration {
     return (node as ImportAllDeclaration).kind === 'importAll';
   },
 
-  isImportDefaultDeclaration(node: DeclarationBase): node is ImportDefaultDeclaration {
+  isImportDefaultDeclaration(node): node is ImportDefaultDeclaration {
     return (node as ImportDefaultDeclaration).kind === 'importDefault';
   },
 
-  isImportNamedDeclaration(node: DeclarationBase): node is ImportNamedDeclaration {
+  isImportNamedDeclaration(node): node is ImportNamedDeclaration {
     return (node as ImportNamedDeclaration).kind === 'importNamed';
   },
 
-  isImportEqualsDeclaration(node: DeclarationBase): node is ImportEqualsDeclaration {
+  isImportEqualsDeclaration(node): node is ImportEqualsDeclaration {
     return (node as ImportEqualsDeclaration).kind === 'import=';
   },
 
-  isImportDeclaration(node: DeclarationBase): node is ImportDeclaration {
+  isImportDeclaration(node): node is ImportDeclaration {
     return (node as ImportDeclaration).kind === 'import';
   },
 
@@ -449,6 +460,68 @@ export const util = {
 
   isConstDeclaration(node): node is ConstDeclaration {
     return (node as ConstDeclaration).kind === 'const';
+  },
+
+  isFunctionDeclaration(node): node is FunctionDeclaration {
+    return (node as FunctionDeclaration).kind === 'function';
+  },
+
+  isNamespaceMember(node): node is NamespaceMember {
+    return util.isFunctionDeclaration(node) ||
+      util.isConstDeclaration(node) ||
+      util.isClassDeclaration(node) ||
+      util.isNamespaceDeclaration(node) ||
+      util.isInterfaceDeclaration(node) ||
+      util.isCommentDeclaration(node)||
+      util.isJsDocCommentDeclaration(node)||
+      util.isTypeAliasDeclaration(node)||
+      util.isVariableDeclaration(node);
+  },
+
+  isCommentDeclaration(node): node is CommentDeclaration {
+    return (node as CommentDeclaration).kind === 'comment';
+  },
+
+  isJsDocCommentDeclaration(node): node is JsDocCommentDeclaration {
+    return (node as JsDocCommentDeclaration).kind === 'jsdoc-comment';
+  },
+
+  isTypeAliasDeclaration(node): node is TypeAliasDeclaration {
+    return (node as TypeAliasDeclaration).kind === 'alias';
+  },
+
+  isVariableDeclaration(node): node is VariableDeclaration {
+    return (node as VariableDeclaration).kind === 'var';
+  },
+
+  isExportEqualsDeclaration(node): node is ExportEqualsDeclaration {
+    return (node as ExportEqualsDeclaration).kind === 'export=';
+  },
+
+  isExportDefaultDeclaration(node): node is ExportDefaultDeclaration {
+    return (node as ExportDefaultDeclaration).kind === 'exportDefault';
+  },
+
+  isExportNameDeclaration(node): node is ExportNameDeclaration {
+    return (node as ExportNameDeclaration).kind === 'exportName';
+  },
+
+  isModuleDeclaration(node): node is ModuleDeclaration {
+    return (node as ModuleDeclaration).kind === 'module';
+  },
+
+  isEnumDeclaration(node): node is EnumDeclaration {
+    return (node as EnumDeclaration).kind === 'enum' ;
+  },
+
+  isTopLevelDeclaration(node): node is TopLevelDeclaration {
+    return util.isImport(node) ||
+      util.isNamespaceDeclaration(node) ||
+      util.isExportEqualsDeclaration(node) ||
+      util.isExportDefaultDeclaration(node) ||
+      util.isExportNameDeclaration(node) ||
+      util.isModuleDeclaration(node) ||
+      util.isEnumDeclaration(node);
   },
 };
 
@@ -676,11 +749,12 @@ export const create = {
   },
 
   namedTypeReference(name: string | NamedDeclarationBase): NamedTypeReference {
+    const isNamedDeclaration = util.isNamedDeclarationBase(name);
     return {
       kind: 'name',
-      name: typeof name === 'string'
+      name: !isNamedDeclaration
         ? name
-        : util.getFullName(name),
+        : util.getFullName(<NamedDeclarationBase>name),
       typeParameters: [],
     };
   },

@@ -4,6 +4,7 @@
     "no-bitwise": false,
     "prefer-for-of": false,
     "no-angle-bracket-type-assertion": false,
-    "whitespace": false
+    "whitespace": false,
+    "no-duplicate-imports": false
   }
 }
