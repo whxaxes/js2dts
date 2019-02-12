@@ -38,11 +38,10 @@ export function getJSDocs(node: ts.Node): ts.JSDoc[] | undefined {
     const declaration = symbol && (symbol.valueDeclaration || (symbol.declarations && symbol.declarations[0]));
     if (declaration) {
       if (ts.isPropertyAccessExpression(declaration)) {
-        const propertyAccessStatement = declaration.parent.parent;
-        return getJSDocs(propertyAccessStatement);
+        return getJSDocs(declaration.parent.parent);
       }
 
-      jsDocs = getJSDocProp(node);
+      jsDocs = getJSDocProp(declaration);
     }
   }
 
@@ -60,7 +59,7 @@ export function isDeclareModule(node: ts.Node): node is ts.ModuleDeclaration {
 export function getText(node?: ts.Node) {
   if (node) {
     return ts.isIdentifier(node)
-      ? node.text
+      ? node.text.replace(/^("|')|("|')$/g, '')
       : ts.isStringLiteral(node) ? node.text : '';
   }
   return '';

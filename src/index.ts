@@ -902,8 +902,8 @@ function prepareEnv(file: string, options?: CreateOptions) {
     toString() {
       return [
         dom.emit(this.declaration.import),
-        dom.emit(this.declaration.export),
         dom.emit(this.declaration.fragment),
+        dom.emit(this.declaration.export),
       ].join('');
     },
 
@@ -982,9 +982,21 @@ export function create(file: string, options?: CreateOptions) {
             : util.getText(node) || util.getAnonymousName();
 
           typeDom = dom.util.typeToDeclaration(name, typeDom);
-          if (dom.util.isTopLevelDeclaration(typeDom)) {
+          if (dom.util.isCanBeExportDefault(typeDom)) {
             typeDom.flags = dom.DeclarationFlags.ExportDefault;
           } else {
+            if (dom.util.isConstDeclaration(typeDom) && dom.util.isTypeofReference(typeDom.type)) {
+              // make export default simplify
+              const tds = env.declaration.fragment.filter(member => (
+                dom.util.isNamedDeclarationBase(member) && typeDom.type.type.name === member.name
+              ));
+
+              if (tds.length === 1 && dom.util.isCanBeExportDefault(tds[0])) {
+                tds[0].flags = (tds[0].flags || dom.DeclarationFlags.None) | dom.DeclarationFlags.ExportDefault;
+                return;
+              }
+            }
+
             env.declaration.export.push(dom.create.exportDefault(name));
           }
         } else {

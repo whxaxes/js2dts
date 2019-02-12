@@ -556,6 +556,10 @@ export const util = {
       util.isModuleDeclaration(node) ||
       util.isEnumDeclaration(node);
   },
+
+  isCanBeExportDefault(node) {
+    return util.isFunctionDeclaration(node) || util.isClassDeclaration(node);
+  },
 };
 
 export const create = {
