@@ -56,8 +56,8 @@ export interface Env {
 }
 
 let env: Env;
+let envCache: { [key: string]: Env } = {};
 const envStack: Env[] = [];
-const envCache: { [key: string]: Env } = {};
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
 const typeRoot = path.resolve(nodeModulesRoot, './@types/');
@@ -925,6 +925,11 @@ function endEnv() {
 
   // restore env
   env = envStack.pop()!;
+
+  if (!envStack.length) {
+    // clean cache
+    envCache = {};
+  }
 
   return response;
 }

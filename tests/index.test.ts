@@ -107,24 +107,8 @@ describe('index.test.ts', () => {
       await checkDts('plugin/mm', false);
     });
 
-    it('plugin#cfork', async () => {
-      await checkDts('plugin/cfork', false);
-    });
-
-    it('plugin#qs', async () => {
-      await checkDts('plugin/qs', false);
-    });
-
-    it('plugin#qs/stringify.js', async () => {
-      await checkDts('plugin/qs/stringify.js', false);
-    });
-
     it('plugin#cookies', async () => {
       await checkDts('plugin/cookies', false);
-    });
-
-    it('plugin#egg-cookies', async () => {
-      await checkDts('plugin/egg-cookies', false);
     });
   });
 });
