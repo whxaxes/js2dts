@@ -62,12 +62,15 @@ $ js2dts ./test.js
 source code
 
 ```js
+// function/index.js
+module.exports = superName;
+
 /**
  * super function
  * 
  * @param {String} bbb 123123
  */
-module.exports = function superName(bbb) {
+function superName(bbb, ccc = module.exports.test) {
   return '123123';
 }
 
@@ -80,15 +83,22 @@ module.exports.test2 = {
 dts
 
 ```typescript
-export = T103;
-declare const T103: ((bbb: string) => string) & T103.T104;
-declare namespace T103 {
-  export interface T104 {
-    test: () => number;
-    test2: T103.T105;
-  }
+// function/index.d.ts
+interface T104 {
+  test: () => number;
+  test2: _Function.T105;
+}
+/**
+ * super function
+ * 
+ * @param {String} bbb 123123
+ */
+declare function superName(bbb: string, ccc?: () => number): string;
+declare const _Function: typeof superName & T104;
+declare namespace _Function {
   export interface T105 {
     abc: number;
   }
 }
+export = _Function;
 ```
