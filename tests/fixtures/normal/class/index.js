@@ -29,6 +29,7 @@ class MyTest extends events.EventEmitter {
   getCount() {
     return this.listenerCount();
   }
+  
 }
 
 module.exports = MyTest;

@@ -19,3 +19,9 @@ exports.HttpClient2 = require('./httpclient2');
 exports.create = function (options) {
   return new exports.HttpClient(options);
 };
+
+exports.abc = exports.bbb = 123;
+const bb = exports;
+bb.aaaa = '3333';
+
+exports.default = urllib;

@@ -27,3 +27,9 @@ exports.MyTest = class {
     return this.fn();
   }
 }
+
+/** @type {{ [key: string]: string }} */
+exports.bbb = {};
+
+/** @private */
+exports.aaa = {};
