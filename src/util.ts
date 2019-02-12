@@ -22,6 +22,10 @@ export function getSymbol(node: ts.Node): ts.Symbol | undefined {
   return (node as any).symbol;
 }
 
+export function getDeclarationBySymbol(symbol: ts.Symbol) {
+  return symbol.valueDeclaration || (symbol.declarations && symbol.declarations[0]);
+}
+
 export function getJSDocProp(node: ts.Node): ts.JSDoc[] | undefined {
   return (node as any).jsDoc;
 }

@@ -5,6 +5,8 @@ import * as util from './util';
 import * as dom from './dom';
 import { isEqual } from 'lodash';
 
+export { dom, util };
+
 export interface PlainObj<T = any> {
   [key: string]: T;
 }
@@ -88,7 +90,7 @@ export interface ExportListObj {
 }
 
 // get type dom from typeNode
-export function getTypeDom(typeNode?: ts.TypeNode, flags: GetTypeDomFlags = GetTypeDomFlags.None) {
+export function getTypeDom(typeNode?: ts.Node, flags: GetTypeDomFlags = GetTypeDomFlags.None) {
   if (!typeNode) return;
 
   switch (typeNode.kind) {
@@ -372,7 +374,7 @@ export function eachPropertiesTypeDom<T extends ts.ClassElement | ts.ObjectLiter
 export function getPropTypeDomByNode(name: string, node?: ts.Node, flags: dom.DeclarationFlags = dom.DeclarationFlags.None) {
   let typeDom: dom.ClassMember | undefined;
   // check optional
-  const checkOptional = (type?: ts.TypeNode, node?: ts.Node) => {
+  const checkOptional = (type?: ts.Node, node?: ts.Node) => {
     if (
       (type && type.kind === SyntaxKind.UndefinedKeyword) ||
       (node && util.hasQuestionToken(node))
@@ -381,43 +383,41 @@ export function getPropTypeDomByNode(name: string, node?: ts.Node, flags: dom.De
     }
   };
 
-  if (!node || ts.isTypeNode(node)) {
-    checkOptional(node);
+  if (name === '...' || !node) {
+    // ignore ...
+    return dom.create.property(name, dom.type.any, flags);
+  }
 
-    // type node
+  if (util.modifierHas(node, SyntaxKind.StaticKeyword)) {
+    flags |= dom.DeclarationFlags.Static;
+  }
+
+  if (ts.isTypeNode(node) || ts.isToken(node)) {
+    checkOptional(node);
     const d = getTypeDom(node) || dom.type.any;
     if (dom.util.isFunctionType(d)) {
       typeDom = dom.create.method(name, d.parameters, d.returnType, flags);
     } else {
       typeDom = dom.create.property(name, d, flags);
     }
-  } else {
-    // not type node
-    if (util.modifierHas(node, SyntaxKind.StaticKeyword)) {
-      flags |= dom.DeclarationFlags.Static;
-    }
-
-    if (name !== '...') {
-      if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
-        // method property
-        const typeNode = getReturnTypeFromDeclaration(node);
-        typeDom = dom.create.method(
-          name,
-          getFunctionParametersTypeDom(node.parameters),
-          typeNode ? getTypeDom(typeNode) : dom.type.any,
-          flags,
-        );
-      } else if (ts.isGetAccessorDeclaration(node) || ts.isGetAccessor(node)) {
-        // getter
-        const typeNode = getTypeNodeAtLocation(node);
-        checkOptional(typeNode, node);
-        typeDom = dom.create.property(name, getTypeDom(typeNode) || dom.type.any, flags);
-      } else if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node)) {
-        // property declaration
-        checkOptional(node.type, node);
-        typeDom = dom.create.property(name, getTypeDom(node.type) || dom.type.any, flags);
-      }
-    }
+  } else if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
+    // method property
+    const typeNode = getReturnTypeFromDeclaration(node);
+    typeDom = dom.create.method(
+      name,
+      getFunctionParametersTypeDom(node.parameters),
+      typeNode ? getTypeDom(typeNode) : dom.type.any,
+      flags,
+    );
+  } else if (ts.isGetAccessorDeclaration(node) || ts.isGetAccessor(node)) {
+    // getter
+    const typeNode = getTypeNodeAtLocation(node);
+    checkOptional(typeNode, node);
+    typeDom = dom.create.property(name, getTypeDom(typeNode) || dom.type.any, flags);
+  } else if (ts.isPropertyDeclaration(node) || ts.isPropertySignature(node)) {
+    // property declaration
+    checkOptional(node.type, node);
+    typeDom = dom.create.property(name, getTypeDom(node.type) || dom.type.any, flags);
   }
 
   typeDom = typeDom || dom.create.property(name, dom.type.any, flags);
@@ -531,10 +531,10 @@ export function getPropertyAccessTypeDom(node: ts.PropertyAccessExpression) {
   if (symbol && symbol.exports) {
     const members: dom.ObjectTypeMember[] = [];
     symbol.exports.forEach(obj => {
-      const typeNode = getTypeNodeAtLocation(obj.valueDeclaration);
+      const declaration = util.getDeclarationBySymbol(obj);
       members.push(dom.create.property(
         obj.getName(),
-        getTypeDom(typeNode),
+        getTypeDom(declaration && getTypeNodeAtLocation(declaration)) || dom.type.any,
       ));
     });
     return createInterfaceWithCache(members);
@@ -716,12 +716,10 @@ export function createFunctionDeclaration(fnName: string, node: ts.FunctionLike)
     const signature = env.checker.getSignatureFromDeclaration(node)!;
     const returnType = env.checker.getReturnTypeOfSignature(signature);
     const returnTypeNode = env.checker.typeToTypeNode(returnType, undefined, defaultBuildFlags);
-    const parameterDom = getFunctionParametersTypeDom(node.parameters);
-    const returnTypeDom = getTypeDom(returnTypeNode) || dom.type.any;
     typeDom = dom.create.function(
       fnName,
-      parameterDom,
-      returnTypeDom,
+      getFunctionParametersTypeDom(node.parameters),
+      getTypeDom(returnTypeNode) || dom.type.any,
     );
   }
 

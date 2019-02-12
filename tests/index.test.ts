@@ -20,15 +20,8 @@ function coffeeWork(task: coffee.Coffee) {
 }
 
 async function checkDts(file: string, execute: boolean = true) {
-  let dir: string;
-  let code: string;
-  if (path.extname(file)) {
-    dir = path.resolve(__dirname, './fixtures', path.dirname(file));
-    code = create(path.resolve(dir, path.basename(file)))!.write();
-  } else {
-    dir = path.resolve(__dirname, './fixtures', file);
-    code = create(path.resolve(dir, 'index.js'))!.write();
-  }
+  const dir = path.resolve(__dirname, './fixtures', file);
+  const code = create(path.resolve(dir, 'index.js'))!.write();
   const tscFile = require.resolve('typescript/bin/tsc');
   fs.writeFileSync(path.resolve(dir, 'tsconfig.json'), tsconfigPlain);
   await coffeeWork(coffee.fork(tscFile, [ '-p', path.resolve(dir, 'tsconfig.json') ], { execArgv: [] }));

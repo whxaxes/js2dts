@@ -314,7 +314,7 @@ export type TypeReference =
   | ArrayTypeReference
   | PrimitiveType;
 
-export type ObjectTypeReference = ClassDeclaration | InterfaceDeclaration;
+export type ObjectTypeReference = ClassDeclaration | InterfaceDeclaration | NamedTypeReference;
 export type ObjectTypeMember =
   | PropertyDeclaration
   | MethodDeclaration
@@ -1200,6 +1200,7 @@ export function getWriter(
       case 'interface':
       case 'class':
       case 'union':
+      case 'object':
         return true;
       default:
         return false;
@@ -1399,6 +1400,7 @@ export function getWriter(
     if (d.baseTypes && d.baseTypes.length) {
       print('extends ');
       writeDelimited<ObjectTypeReference>(d.baseTypes, ', ', writeReference);
+      print(' ');
     }
     printObjectTypeMembers(d.members);
     newline();
@@ -1508,7 +1510,9 @@ export function getWriter(
 
   function writePropertyDeclaration(p: PropertyDeclaration) {
     printDeclarationComments(p);
-    start(`${memberFlagsToString(p.flags)}${quoteIfNeeded(p.name)}: `);
+    start(`${memberFlagsToString(p.flags)}${quoteIfNeeded(p.name)}`);
+    if (hasFlag(p.flags, DeclarationFlags.Optional)) print('?');
+    print(': ');
     writeReference(p.type);
     print(';');
     newline();
