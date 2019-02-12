@@ -1,6 +1,6 @@
 {
   "name": "js2dts",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "dts generator for js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

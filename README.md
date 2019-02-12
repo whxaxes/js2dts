@@ -67,7 +67,7 @@ module.exports = superName;
 
 /**
  * super function
- * 
+ *
  * @param {String} bbb 123123
  */
 function superName(bbb, ccc = module.exports.test) {
@@ -90,7 +90,7 @@ interface T104 {
 }
 /**
  * super function
- * 
+ *
  * @param {String} bbb 123123
  */
 declare function superName(bbb: string, ccc?: () => number): string;
