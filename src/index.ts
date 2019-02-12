@@ -322,101 +322,10 @@ export function createClassDeclaration(className: string, node: ts.ClassLikeDecl
   return classDeclaration;
 }
 
-// find assign result type
-interface FindAssignResult {
-  init?: boolean;
-  obj?: ts.Expression;
-  key: ts.Identifier;
-  value?: ts.Expression;
-  node: ts.Node;
-}
-
-// find xxx.xxx =, let xxx =, xxx =
-export function findAssign(statements: ts.NodeArray<ts.Statement>, cb: (obj: FindAssignResult) => void) {
-  statements.forEach(statement => {
-    const checkValue = (node?: ts.Expression) => {
-      if (node && ts.isBinaryExpression(node)) {
-        checkBinary(node);
-        return checkValue(node.right);
-      } else {
-        return node;
-      }
-    };
-
-    const checkBinary = (node: ts.BinaryExpression) => {
-      if (
-        ts.isPropertyAccessExpression(node.left) &&
-        ts.isIdentifier(node.left.name)
-      ) {
-        // xxx.xxx = xx
-        cb({
-          obj: node.left.expression,
-          key: node.left.name,
-          value: checkValue(node.right),
-          node: statement,
-        });
-      } else if (ts.isIdentifier(node.left)) {
-        // xxx = xx
-        cb({
-          key: node.left,
-          value: checkValue(node.right),
-          node: statement,
-        });
-      } else if (
-        ts.isElementAccessExpression(node.left) &&
-        ts.isStringLiteral(node.left.argumentExpression)
-      ) {
-        // xxx['sss'] = xxx
-        cb({
-          obj: node.left.expression,
-          key: ts.createIdentifier(node.left.argumentExpression.text),
-          value: checkValue(node.right),
-          node: statement,
-        });
-      }
-    };
-
-    if (
-      ts.isExpressionStatement(statement) &&
-      ts.isBinaryExpression(statement.expression)
-    ) {
-      checkBinary(statement.expression);
-    } else if (ts.isVariableStatement(statement)) {
-      // const xxx = xx
-      statement.declarationList.declarations.forEach(declare => {
-        if (ts.isIdentifier(declare.name)) {
-          cb({
-            init: true,
-            key: declare.name,
-            value: checkValue(declare.initializer),
-            node: declare,
-          });
-        }
-      });
-    } else if (ts.isIfStatement(statement)) {
-      const checkIfStatement = (el: ts.IfStatement) => {
-        if (ts.isBlock(el.thenStatement)) {
-          findAssign(el.thenStatement.statements, cb);
-        }
-
-        if (el.elseStatement) {
-          if (ts.isIfStatement(el.elseStatement)) {
-            checkIfStatement(el.elseStatement);
-          } else if (ts.isBlock(el.elseStatement)) {
-            findAssign(el.elseStatement.statements, cb);
-          }
-        }
-      };
-
-      checkIfStatement(statement);
-    }
-  });
-}
-
 // find this.xxx =
 export function findAssignToThis(statements: ts.NodeArray<ts.Statement>) {
   const assignList: Array<{ name: string; node?: ts.TypeNode }> = [];
-  findAssignByName(statements, 'this', ({ key, node }) => {
+  util.findAssignByName(statements, 'this', ({ key, node }) => {
     const propName = util.getText(key);
     if (checkIsPrivate(node, propName)) {
       return;
@@ -428,60 +337,6 @@ export function findAssignToThis(statements: ts.NodeArray<ts.Statement>) {
     });
   });
   return assignList;
-}
-
-// find assign by name
-type FindAssignNameType = string | RegExp;
-interface FindAssignNameResult extends FindAssignResult {
-  obj: ts.Expression;
-  name: string;
-  value: ts.Expression;
-}
-
-export function findAssignByName(
-  statements: ts.NodeArray<ts.Statement>,
-  name: FindAssignNameType | FindAssignNameType[],
-  cb?: (result: FindAssignNameResult) => void | boolean,
-) {
-  // cache the variable of name
-  const variableList = Array.isArray(name) ? name : [ name ];
-  const variableObj: { [key: string]: FindAssignNameResult[] } = {};
-  const nameAlias = {};
-  const getRealName = name => {
-    const realName = nameAlias[name] || name;
-    const hitTarget = !!variableList.find(variable => {
-      return (typeof variable === 'string')
-        ? variable === realName
-        : variable.test(realName);
-    });
-    return hitTarget ? realName : undefined;
-  };
-
-  findAssign(statements, ({ obj, key, value, node }) => {
-    if (!obj || !value) {
-      // const xx = name
-      if (value) {
-        const realName = getRealName(value.getText().trim());
-        if (realName) {
-          nameAlias[util.getText(key)] = realName;
-        }
-      }
-
-      return;
-    }
-
-    const realName = getRealName(obj.getText().trim());
-    if (realName) {
-      const result = { name: realName, obj, key, value, node };
-      const cbResult = cb ? cb(result) : true;
-      if (cbResult !== false) {
-        variableObj[realName] = variableObj[realName] || [];
-        variableObj[realName].push(result);
-      }
-    }
-  });
-
-  return variableObj;
 }
 
 export function addJsDocToTypeDom(typeDom: dom.DeclarationBase, originalNode: ts.Node): ts.JSDoc | undefined {
