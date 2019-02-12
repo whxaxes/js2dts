@@ -1,5 +1,11 @@
 import * as ts from 'typescript';
 import * as path from 'path';
+let uniqId = 100;
+
+// get name for anonymous type
+export function getAnonymousName() {
+  return `T${uniqId++}`;
+}
 
 export function formatName(name: string) {
   name = name
@@ -8,8 +14,8 @@ export function formatName(name: string) {
   return name[0].toUpperCase() + name.substring(1);
 }
 
-export function getTypeArguments(node: ts.TypeNode): ts.TypeNode[] | undefined {
-  return (node as any).typeArguments;
+export function getTypeArguments(node: ts.TypeNode) {
+  return (node as ts.NodeWithTypeArguments).typeArguments;
 }
 
 export function getSymbol(node: ts.Node): ts.Symbol | undefined {

@@ -4,38 +4,37 @@ import fs from 'fs';
 import * as util from './util';
 import * as dom from './dom';
 import { isEqual } from 'lodash';
-let uniqId = 100;
 
-interface PlainObj<T = any> {
+export interface PlainObj<T = any> {
   [key: string]: T;
 }
 
-interface Declaration {
+export interface Declaration {
   import: dom.Import[];
   export: dom.TopLevelDeclaration[];
   fragment: dom.NamespaceMember[];
 }
 
-interface ImportCacheElement {
+export interface ImportCacheElement {
   default?: string;
   list: Array<{ name: string; as?: string }>;
   from: string;
   realPath: string;
 }
 
-interface CreateOptions {
+export interface CreateOptions {
   dist?: string;
   flags?: CreateDtsFlags;
 }
 
-enum ExportFlags {
+export enum ExportFlags {
   None = 0,
   ExportEqual = 1 << 0,
   Export = 1 << 1,
 }
 
 // runtime env
-interface Env {
+export interface Env {
   file: string;
   dist: string;
   flags: CreateDtsFlags;
@@ -86,11 +85,6 @@ export interface ExportListObj {
   name: string;
   node: ts.Node;
   originalNode: ts.Node;
-}
-
-// get name for anonymous type
-export function getAnonymousName() {
-  return `T${uniqId++}`;
 }
 
 // get type dom from typeNode
@@ -534,8 +528,14 @@ export function addJsDocToTypeDom(typeDom: dom.DeclarationBase, originalNode: ts
   let jsDoc = getJSDocPlain(originalNode);
   if (!jsDoc) {
     const symbol = util.getSymbol(originalNode);
-    if (symbol && symbol.valueDeclaration) {
-      jsDoc = getJSDocPlain(symbol.valueDeclaration);
+    const declaration = symbol && (symbol.valueDeclaration || symbol.declarations[0]);
+    if (declaration) {
+      if (ts.isPropertyAccessExpression(declaration)) {
+        const propertyAccessStatement = declaration.parent.parent;
+        return addJsDocToTypeDom(typeDom, propertyAccessStatement);
+      }
+
+      jsDoc = getJSDocPlain(declaration);
     }
   }
   typeDom.jsDocComment = jsDoc
@@ -766,7 +766,7 @@ export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.Paramet
     }
 
     // prevent duplicate
-    let name = util.getText(param.name) || getAnonymousName();
+    let name = util.getText(param.name) || util.getAnonymousName();
     if (nameCache[name] === undefined) {
       nameCache[name] = 0;
     } else {
@@ -1015,7 +1015,7 @@ export function createInterfaceWithCache(members: dom.ObjectTypeMember[]) {
   if (interfaceDeclare) {
     return interfaceDeclare;
   }
-  const nsi = createExportInterface(getAnonymousName());
+  const nsi = createExportInterface(util.getAnonymousName());
   nsi.members = members;
   env.interfaceList.push(nsi);
   return nsi;
@@ -1178,7 +1178,7 @@ export function create(file: string, options?: CreateOptions) {
         env.declaration.fragment.push(typeDom);
       } else {
         if (!exportList) {
-          exportList = dom.create.interface(getAnonymousName());
+          exportList = dom.create.interface(util.getAnonymousName());
           env.declaration.fragment.push(exportList);
         }
 
