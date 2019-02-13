@@ -10,3 +10,4 @@ exports.mod = require('./mod');
 exports.egg = egg;
 exports.Application = egg.Application;
 exports.Agent = egg.Agent;
+exports.default = () => 123;
