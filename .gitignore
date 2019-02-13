@@ -36,9 +36,6 @@ build/Release
 node_modules/
 jspm_packages/
 
-# TypeScript v1 declaration files
-typings/
-
 # Optional npm cache directory
 .npm
 
@@ -65,4 +62,5 @@ dist/
 tests/fixtures/**/check.js
 tests/fixtures/**/tsconfig.json
 tests/fixtures/**/*.d.ts
-!typings/
+
+!tests/fixtures/normal/custom.1/mod/index.d.ts
