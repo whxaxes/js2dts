@@ -9,8 +9,8 @@ export function getAnonymousName() {
 
 export function formatName(name: string) {
   name = name
-    .replace(/[\/._-][a-z]/gi, s => s.substring(1).toUpperCase())
-    .replace(/\/|\./g, '');
+    .replace(/[\/\\._-][a-z]/gi, s => s.substring(1).toUpperCase())
+    .replace(/\/|\\|\./g, '');
   return name[0].toUpperCase() + name.substring(1);
 }
 
