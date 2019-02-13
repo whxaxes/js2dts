@@ -341,12 +341,11 @@ export function findAssignToThis(statements: ts.NodeArray<ts.Statement>) {
   return assignList;
 }
 
-export function addJsDocToTypeDom(typeDom: dom.DeclarationBase, originalNode: ts.Node): ts.JSDoc | undefined {
-  const jsDoc = util.getJSDoc(originalNode);
-  typeDom.jsDocComment = jsDoc
-    ? dom.create.jsDocComment(jsDoc.getText(), dom.CommentFlags.Plain)
+export function addJsDocToTypeDom(typeDom: dom.DeclarationBase, originalNode: ts.Node) {
+  const jsDocs = util.getJSDocs(originalNode);
+  typeDom.jsDocComment = jsDocs
+    ? jsDocs.map(doc => dom.create.jsDocComment(doc.getText()))
     : undefined;
-  return jsDoc;
 }
 
 export function eachPropertiesTypeDom<T extends ts.ClassElement | ts.ObjectLiteralElement>(
@@ -752,9 +751,9 @@ export function getModNameByPath(fileName: string) {
       modName = `${modName}/${basename}`;
     }
 
-    return modName;
+    return util.formatUrl(modName);
   } else {
-    const from = path.relative(path.dirname(env.dist), path.join(dir, basename));
+    const from = util.formatUrl(path.relative(path.dirname(env.dist), path.join(dir, basename)));
     return from.startsWith('.') ? from : `./${from}`;
   }
 }

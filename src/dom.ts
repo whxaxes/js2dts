@@ -38,7 +38,7 @@
 const brRegex = /\r?\n/g;
 
 export interface DeclarationBase {
-  jsDocComment?: JsDocCommentDeclaration;
+  jsDocComment?: JsDocCommentDeclaration[];
   comment?: CommentDeclaration;
   flags?: DeclarationFlags;
   namespace?: NamespaceDeclaration;
@@ -505,9 +505,9 @@ export const util = {
       util.isClassDeclaration(node) ||
       util.isNamespaceDeclaration(node) ||
       util.isInterfaceDeclaration(node) ||
-      util.isCommentDeclaration(node)||
-      util.isJsDocCommentDeclaration(node)||
-      util.isTypeAliasDeclaration(node)||
+      util.isCommentDeclaration(node) ||
+      util.isJsDocCommentDeclaration(node) ||
+      util.isTypeAliasDeclaration(node) ||
       util.isVariableDeclaration(node);
   },
 
@@ -563,7 +563,13 @@ export const util = {
 };
 
 export const create = {
-  comment(comment: string, flags = CommentFlags.Wrap): CommentDeclaration {
+  comment(comment: string, flags?: CommentFlags): CommentDeclaration {
+    if (!flags) {
+      flags = comment.startsWith('//')
+        ? CommentFlags.Plain
+        : CommentFlags.Wrap;
+    }
+
     return {
       kind: 'comment',
       comment,
@@ -571,7 +577,13 @@ export const create = {
     };
   },
 
-  jsDocComment(jsDocComment: string, flags = CommentFlags.Wrap): JsDocCommentDeclaration {
+  jsDocComment(jsDocComment: string, flags?: CommentFlags): JsDocCommentDeclaration {
+    if (!flags) {
+      flags = (jsDocComment.startsWith('/*') && jsDocComment.endsWith('*/'))
+        ? CommentFlags.Plain
+        : CommentFlags.Wrap;
+    }
+
     return {
       kind: 'jsdoc-comment',
       jsDocComment,
@@ -791,7 +803,7 @@ export const create = {
       kind: 'name',
       name: !isNamedDeclaration
         ? name
-        : util.getFullName(<NamedDeclarationBase>name),
+        : util.getFullName(<NamedDeclarationBase> name),
       typeParameters: [],
     };
   },
@@ -1213,7 +1225,7 @@ export function getWriter(
     }
 
     if (decl.jsDocComment) {
-      writeJsDocComment(decl.jsDocComment);
+      writeDelimited(decl.jsDocComment, newline, writeJsDocComment);
     }
   }
 
@@ -1446,11 +1458,15 @@ export function getWriter(
     writeReference(p.type);
   }
 
-  function writeDelimited<T>(arr: T[], sep: string, printer: (x: T) => void) {
+  function writeDelimited<T>(arr: T[], sep: string | (() => void), printer: (x: T) => void) {
     let first = true;
     for (const el of arr) {
       if (!first) {
-        print(sep);
+        if (typeof sep === 'string') {
+          print(sep);
+        } else {
+          sep();
+        }
       }
       printer(el);
       first = false;
