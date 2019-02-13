@@ -7,6 +7,10 @@ export function getAnonymousName() {
   return `T${uniqId++}`;
 }
 
+export function formatUrl(url: string) {
+  return url.replace(/\\/g, '/');
+}
+
 export function formatName(name: string) {
   name = name
     .replace(/[\/\\._-][a-z]/gi, s => s.substring(1).toUpperCase())
