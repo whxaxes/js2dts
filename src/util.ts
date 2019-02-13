@@ -35,18 +35,36 @@ export function getJSDoc(node: ts.Node): ts.JSDoc | undefined {
   return jsDocs ? jsDocs[jsDocs.length - 1] : undefined;
 }
 
-export function getJSDocs(node: ts.Node): ts.JSDoc[] | undefined {
-  let jsDocs = getJSDocProp(node);
-  if (!jsDocs) {
+export function getDeclarationMayHasJSDoc(node: ts.Node): ts.Node {
+  if (!getJSDocProp(node)) {
     const symbol = getSymbol(node);
-    const declaration = symbol && (symbol.valueDeclaration || (symbol.declarations && symbol.declarations[0]));
+    const declaration = symbol && getDeclarationBySymbol(symbol);
     if (declaration) {
       if (ts.isPropertyAccessExpression(declaration)) {
-        return getJSDocs(declaration.parent.parent);
+        return declaration.parent.parent;
       }
 
-      jsDocs = getJSDocProp(declaration);
+      return declaration;
     }
+  }
+
+  return node;
+}
+
+export function getJSDocs(node: ts.Node): ts.JSDoc[] | undefined {
+  const decl = getDeclarationMayHasJSDoc(node);
+  if (!decl) return;
+
+  const jsDocs = getJSDocProp(decl);
+  if (!jsDocs) {
+    const tags = ts.getJSDocTags(decl);
+    const jsDocArray: ts.JSDoc[] = [];
+    tags.forEach(tag => {
+      if (ts.isJSDoc(tag.parent) && !jsDocArray.includes(tag.parent)) {
+        jsDocArray.push(tag.parent);
+      }
+    });
+    return jsDocArray;
   }
 
   return jsDocs;
@@ -73,11 +91,7 @@ export function getText(node?: ts.Node) {
 export function findJsDocTag(node: ts.Node, name: string) {
   const jsDocTags = ts.isJSDoc(node)
     ? node.tags
-    : (
-      ts.isParseTreeNode(node)
-        ? ts.getJSDocTags(node)
-        : (getJSDoc(node)! || {}).tags
-    );
+    : ts.getJSDocTags(getDeclarationMayHasJSDoc(node));
 
   return jsDocTags && jsDocTags.find(tag => getText(tag.tagName) === name);
 }
