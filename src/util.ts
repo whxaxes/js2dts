@@ -159,6 +159,13 @@ export function findExports(source: ts.SourceFile) {
       }
 
       return;
+    } else if (ts.isExportDeclaration(statement) && statement.exportClause) {
+      // export { xxxx };
+      statement.exportClause.elements.forEach(spec => {
+        addExportNode(getText(spec.name), spec.propertyName || spec.name, statement);
+      });
+
+      return;
     }
 
     getAssignResultFromStatement(statement).forEach(result => {

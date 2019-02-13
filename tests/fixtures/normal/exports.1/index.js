@@ -26,3 +26,8 @@ export default function myFn() {
 exports.other = 123123;
 
 exports.otherFn = myFn;
+
+const abbb = 123;
+const accc = '123';
+
+export { abbb, accc as cool };
