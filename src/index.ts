@@ -61,8 +61,8 @@ let env: Env;
 let envCache: { [key: string]: Env } = {};
 const envStack: Env[] = [];
 const SyntaxKind = ts.SyntaxKind;
-const nodeModulesRoot = path.resolve(process.cwd(), './node_modules');
-const typeRoot = path.resolve(nodeModulesRoot, './@types/');
+const nodeModulesRoot = util.formatUrl(path.resolve(process.cwd(), './node_modules'));
+const typeRoot = util.formatUrl(path.resolve(nodeModulesRoot, './@types/'));
 const fromLibRE = /typescript\/lib\/lib(\.\w+)*\.d\.ts$/;
 
 // get typedom flags
@@ -744,7 +744,7 @@ export function getModNameByPath(fileName: string) {
     const modRoot = fileName.startsWith(typeRoot) ? typeRoot : nodeModulesRoot;
     const pkgPath = path.resolve(dir, './package.json');
     const pkgInfo = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath).toString()) : {};
-    const typesUrl = util.normalizeDtsUrl(path.resolve(dir, pkgInfo.types || './index.d.ts'));
+    const typesUrl = util.formatUrl(util.normalizeDtsUrl(path.resolve(dir, pkgInfo.types || './index.d.ts')));
     let modName = dir.substring(modRoot.length + 1);
 
     if (fileName !== typesUrl) {

@@ -57,7 +57,7 @@ jspm_packages/
 
 # next.js build output
 .next
-
+package-lock.json
 dist/
 tests/fixtures/**/check.js
 tests/fixtures/**/tsconfig.json
