@@ -37,6 +37,7 @@
   "homepage": "https://github.com/whxaxes/js2dts#readme",
   "dependencies": {
     "commander": "^2.19.0",
+    "lodash": "^4.17.11",
     "mkdirp": "^0.5.1",
     "tslib": "^1.9.3",
     "typescript": "^3.2.2"
@@ -56,7 +57,6 @@
     "egg": "^2.15.1",
     "globby": "^8.0.1",
     "jest": "^23.6.0",
-    "lodash": "^4.17.11",
     "ts-jest": "^23.10.5",
     "tslint": "^5.9.1",
     "tslint-config-egg": "^1.0.0"
