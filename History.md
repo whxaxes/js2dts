@@ -1,4 +1,10 @@
 
+0.1.3 / 2019-02-15
+==================
+
+**fixes**
+  * [[`2b2b562`](http://github.com/whxaxes/js2dts/commit/2b2b562c888799271ab985c4e322c4b0859ccbf4)] - fix: fix path error in window (#5) (吖猩 <<whxaxes@qq.com>>)
+
 0.1.2 / 2019-02-15
 ==================
 
