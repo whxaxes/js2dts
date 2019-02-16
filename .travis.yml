@@ -9,7 +9,7 @@ os:
   - osx
   - linux
 script:
-  - tsc
+  - tsc -p tsconfig.json
   - jest --coverage
 after_script:
   - npminstall codecov && codecov

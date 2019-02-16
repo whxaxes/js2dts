@@ -9,7 +9,7 @@ install:
 test_script:
   - node --version
   - npm --version
-  - tsc
+  - tsc -p tsconfig.json
   - jest --coverage
 
 build: off
