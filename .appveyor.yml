@@ -9,7 +9,7 @@ install:
 test_script:
   - node --version
   - npm --version
-  - npm run build
-  - npm run test -- --coverage
+  - tsc -d
+  - jest --coverage
 
 build: off
