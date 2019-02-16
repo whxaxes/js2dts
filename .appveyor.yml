@@ -9,7 +9,6 @@ install:
 test_script:
   - node --version
   - npm --version
-  - tsc -p tsconfig.json
-  - jest --coverage
+  - npm run ci
 
 build: off

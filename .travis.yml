@@ -9,7 +9,6 @@ os:
   - osx
   - linux
 script:
-  - tsc -p tsconfig.json
-  - jest --coverage
+  - npm run ci
 after_script:
   - npminstall codecov && codecov

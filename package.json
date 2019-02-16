@@ -12,7 +12,8 @@
     "build": "del ./dist && tsc -d",
     "build:w": "npm run build -- -w",
     "test": "npm run build && jest",
-    "cov": "npm run test -- --coverage"
+    "cov": "npm run test -- --coverage",
+    "ci": "tsc && jest --coverage"
   },
   "repository": {
     "type": "git",
