@@ -9,6 +9,7 @@ os:
   - osx
   - linux
 script:
-  - npm run cov
+  - tsc
+  - jest --coverage
 after_script:
   - npminstall codecov && codecov
