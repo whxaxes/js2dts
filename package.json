@@ -9,11 +9,10 @@
     "js2dts": "dist/bin.js"
   },
   "scripts": {
-    "build": "tsc -d",
-    "build:w": "tsc -d -w",
-    "release": "del ./dist && npm run build",
-    "test": "jest",
-    "cov": "npm run build && jest --coverage"
+    "build": "del ./dist && tsc -d",
+    "build:w": "npm run build -- -w",
+    "test": "npm run build && jest",
+    "cov": "npm run test -- --coverage"
   },
   "repository": {
     "type": "git",

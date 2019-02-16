@@ -39,6 +39,7 @@ export enum ExportFlags {
 export interface Env {
   file: string;
   dist: string;
+  uniqId: number;
   flags: CreateDtsFlags;
   program: ts.Program;
   checker: ts.TypeChecker;
@@ -87,6 +88,11 @@ export interface ExportListObj {
   name: string;
   node: ts.Node;
   originalNode: ts.Node;
+}
+
+// get name for anonymous type
+export function getAnonymousName() {
+  return `T${env.uniqId++}`;
 }
 
 // get type dom from typeNode
@@ -576,7 +582,7 @@ export function getFunctionParametersTypeDom(parameters: ts.NodeArray<ts.Paramet
     }
 
     // prevent duplicate
-    let name = util.getText(param.name) || util.getAnonymousName();
+    let name = util.getText(param.name) || getAnonymousName();
     if (nameCache[name] === undefined) {
       nameCache[name] = 0;
     } else {
@@ -815,7 +821,7 @@ export function createInterfaceWithCache(members: dom.ObjectTypeMember[]) {
   if (interfaceDeclare) {
     return interfaceDeclare;
   }
-  const nsi = createExportInterface(util.getAnonymousName());
+  const nsi = createExportInterface(getAnonymousName());
   nsi.members = members;
   env.interfaceList.push(nsi);
   return nsi;
@@ -849,8 +855,13 @@ export function createExportNameByFile(file: string) {
   return getDeclName(`_${util.formatName(name)}`);
 }
 
+// get opt from topEnv
+function getTopEnvOpt<T extends keyof Env = keyof Env>(key: T, def: Env[T]) {
+  return envStack.length ? envStack[0][key] : def;
+}
+
 // prepare env
-function prepareEnv(file: string, options?: CreateOptions) {
+function prepareEnv(file: string, options: CreateOptions = {}) {
   const program = ts.createProgram([ file ], {
     target: ts.ScriptTarget.ES2017,
     module: ts.ModuleKind.CommonJS,
@@ -868,15 +879,10 @@ function prepareEnv(file: string, options?: CreateOptions) {
   const ambientMods = checker.getAmbientModules();
   const ambientModNames = ambientMods.map(mod => mod.escapedName.toString().replace(/^"|"$/g, ''));
 
-  // if options is undefined, use topEnv instead
-  const topEnv = envStack[0];
-  options = options || topEnv || {};
-
   // init env object
   env = {
     file,
     dist: options.dist || `${path.dirname(file)}/${path.basename(file, path.extname(file))}.d.ts`,
-    flags: options.flags === undefined ? CreateDtsFlags.None : options.flags,
     deps: {},
     program,
     checker,
@@ -891,9 +897,11 @@ function prepareEnv(file: string, options?: CreateOptions) {
     interfaceList: [],
     exportFlags: ExportFlags.None,
 
-    // common obj in all env
-    publicNames: topEnv ? topEnv.publicNames : {},
-    importCache: topEnv ? topEnv.importCache : {},
+    // common obj in env tree
+    uniqId: getTopEnvOpt('uniqId', 100),
+    flags: getTopEnvOpt('flags', (options.flags || CreateDtsFlags.None)),
+    publicNames: getTopEnvOpt('publicNames', {}),
+    importCache: getTopEnvOpt('importCache', {}),
 
     // get string
     toString() {
@@ -981,7 +989,7 @@ export function create(file: string, options?: CreateOptions) {
         if (name === 'default') {
           const name = dom.util.isNamedDeclarationBase(typeDom)
             ? typeDom.name
-            : util.getText(node) || util.getAnonymousName();
+            : util.getText(node) || getAnonymousName();
 
           typeDom = dom.util.typeToDeclaration(name, typeDom);
           if (dom.util.isCanBeExportDefault(typeDom)) {
@@ -1008,7 +1016,7 @@ export function create(file: string, options?: CreateOptions) {
         env.declaration.fragment.push(typeDom);
       } else {
         if (!exportInterface) {
-          exportInterface = dom.create.interface(util.getAnonymousName());
+          exportInterface = dom.create.interface(getAnonymousName());
           env.declaration.fragment.push(exportInterface);
         }
 

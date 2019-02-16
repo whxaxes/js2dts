@@ -1,11 +1,5 @@
 import * as ts from 'typescript';
 import * as path from 'path';
-let uniqId = 100;
-
-// get name for anonymous type
-export function getAnonymousName() {
-  return `T${uniqId++}`;
-}
 
 export function formatUrl(url: string) {
   return url.replace(/\\/g, '/');
