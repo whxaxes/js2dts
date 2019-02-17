@@ -80,7 +80,7 @@ module.exports.test2 = {
 };
 ```
 
-dts
+output dts
 
 ```typescript
 // function/index.d.ts
