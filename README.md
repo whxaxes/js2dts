@@ -102,3 +102,6 @@ declare namespace _Function {
 }
 export = _Function;
 ```
+
+More example: [tests/fixtures/**/*.d.ts](https://github.com/whxaxes/js2dts/tree/master/tests/fixtures)
+
