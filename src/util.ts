@@ -76,11 +76,19 @@ export function isDeclareModule(node: ts.Node): node is ts.ModuleDeclaration {
   return ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name);
 }
 
+export function formatIdentifierName(name: string) {
+  return name.replace(/^("|')|("|')$/g, '');
+}
+
 export function getText(node?: ts.Node) {
   if (node) {
-    return ts.isIdentifier(node)
-      ? node.text.replace(/^("|')|("|')$/g, '')
-      : ts.isStringLiteral(node) ? node.text : '';
+    if (ts.isIdentifier(node)) {
+      return formatIdentifierName(node.text);
+    } else if (ts.isStringLiteral(node)) {
+      return node.text;
+    } else if (ts.isQualifiedName(node)) {
+      return getText(node.right);
+    }
   }
   return '';
 }

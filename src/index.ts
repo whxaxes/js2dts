@@ -4,24 +4,13 @@ import fs from 'fs';
 import * as util from './util';
 import * as dom from './dom';
 import { isEqual } from 'lodash';
+import * as envMod from './env';
+import { env } from './env';
 
 export { dom, util };
 
 export interface PlainObj<T = any> {
   [key: string]: T;
-}
-
-export interface Declaration {
-  import: dom.Import[];
-  export: dom.TopLevelDeclaration[];
-  fragment: dom.NamespaceMember[];
-}
-
-export interface ImportCacheElement {
-  default?: string;
-  list: Array<{ name: string; as?: string }>;
-  from: string;
-  realPath: string;
 }
 
 export interface CreateOptions {
@@ -35,32 +24,6 @@ export enum ExportFlags {
   Export = 1 << 1,
 }
 
-// runtime env
-export interface Env {
-  file: string;
-  dist: string;
-  uniqId: number;
-  flags: CreateDtsFlags;
-  program: ts.Program;
-  checker: ts.TypeChecker;
-  sourceFile: ts.SourceFile;
-  declaration: Declaration;
-  importCache: { [key: string]: ImportCacheElement };
-  declareCache: Array<{ node: ts.Declaration, name: string }>;
-  publicNames: PlainObj<number>;
-  exportDefaultName?: string;
-  exportNamespace?: dom.NamespaceDeclaration;
-  interfaceList: dom.InterfaceDeclaration[];
-  deps: { [key: string]: { env: Env; namespace: dom.NamespaceDeclaration } };
-  ambientModNames: string[];
-  exportFlags: ExportFlags;
-  toString: () => string;
-  write: () => string;
-}
-
-let env: Env;
-let envCache: { [key: string]: Env } = {};
-const envStack: Env[] = [];
 const SyntaxKind = ts.SyntaxKind;
 const nodeModulesRoot = util.formatUrl(path.resolve(process.cwd(), './node_modules'));
 const typeRoot = util.formatUrl(path.resolve(nodeModulesRoot, './@types/'));
@@ -168,6 +131,32 @@ export function getTypeQueryTypeDom(typeNode: ts.TypeQueryNode) {
   return referTypeDom ? dom.create.typeof(referTypeDom) : dom.type.any;
 }
 
+export function getJSDocTypeLiteralTypeDom(node: ts.JSDocTypeLiteral) {
+  const decl = dom.create.objectType([]);
+  const tags = node.jsDocPropertyTags;
+  (tags || []).forEach(tag => {
+    if (tag.typeExpression) {
+      const typeNode = tag.typeExpression.type;
+      const propName = util.getText(tag.name);
+      let propTypeNode: dom.ClassMember;
+      if (ts.isJSDocTypeLiteral(typeNode)) {
+        // jsdoc typedef
+        propTypeNode = dom.create.property(propName, getJSDocTypeLiteralTypeDom(typeNode));
+      } else {
+        propTypeNode = getPropTypeDomByNode(propName, typeNode);
+      }
+
+      if (tag.isBracketed) {
+        // [xxxx]
+        propTypeNode.flags! |= dom.DeclarationFlags.Optional;
+      }
+
+      addMemberToObj(decl, propTypeNode);
+    }
+  });
+  return decl;
+}
+
 export function getTypeLiteralTypeDom(typeNode: ts.TypeLiteralNode, flags: GetTypeDomFlags = GetTypeDomFlags.None) {
   const members = typeNode.members;
   const objectType = dom.create.objectType([]);
@@ -214,7 +203,7 @@ export function getUnionTypeDom(typeNode: ts.UnionTypeNode) {
 // create deps in top env
 export function createDepsByFile(file: string) {
   // add all deps to top env
-  const topEnv = envStack[0] || env;
+  const topEnv = envMod.getTopEnv();
   const deps = topEnv.deps[file];
   if (deps) {
     return deps;
@@ -278,7 +267,8 @@ export function getReturnTypeFromDeclaration(declaration: ts.SignatureDeclaratio
   return env.checker.typeToTypeNode(type, undefined, defaultBuildFlags);
 }
 
-export function createClassDeclaration(className: string, node: ts.ClassLikeDeclaration) {
+export function createClassDeclaration(node: ts.ClassLikeDeclaration, className?: string) {
+  className = createNameByDecl(node, className);
   const classDeclaration = dom.create.class(className);
   addJsDocToTypeDom(classDeclaration, node);
 
@@ -433,8 +423,7 @@ export function getPropTypeDomByNode(name: string, node?: ts.Node, flags: dom.De
 
 // get reference module by symbol
 export function getReferenceModule(symbol: ts.Symbol) {
-  if (!symbol) return false;
-  const symbolDeclaration = symbol.valueDeclaration || symbol.declarations[0];
+  const symbolDeclaration = util.getDeclarationBySymbol(symbol);
   if (!symbolDeclaration) return false;
   const declarationFile = symbolDeclaration.getSourceFile().fileName;
   const isFromLib = declarationFile.match(fromLibRE);
@@ -467,7 +456,8 @@ export function getReferenceModule(symbol: ts.Symbol) {
 // get reference typeDom by name
 export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
   let interfaceName = util.getText(node);
-  const symbol = util.getSymbol(node);
+  let referType: dom.ReferTypes | undefined;
+  const symbol = env.checker.getSymbolAtLocation(node) || util.getSymbol(node);
   if (!symbol) return;
 
   const checkAssignEqual = (node: ts.Node, name: string) => {
@@ -486,10 +476,12 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
   if (referenceModule) {
     if (util.isDeclareModule(referenceModule)) {
       // import from ambient modules
+      referType = dom.ReferTypes.ambient;
       const modName = util.getText(referenceModule.name);
       interfaceName = collectImportModule(modName, checkAssignEqual(referenceModule, interfaceName) ? undefined : interfaceName);
     } else if (ts.isSourceFile(referenceModule)) {
       // import from other jsFile
+      referType = dom.ReferTypes.custom;
       const modName = getModNameByPath(referenceModule.fileName);
       if (modName) {
         interfaceName = collectImportModule(
@@ -502,6 +494,7 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
       }
     } else {
       // declaration
+      referType = dom.ReferTypes.declaration;
       const cache = env.declareCache.find(({ node }) => node === referenceModule);
       if (!cache) {
         interfaceName = getDeclName(interfaceName);
@@ -512,25 +505,55 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
         interfaceName = cache.name;
       }
     }
+  } else {
+    referType = dom.ReferTypes.lib;
   }
 
-  return dom.create.namedTypeReference(interfaceName);
+  return dom.create.namedTypeReference(interfaceName, referType);
 }
 
 export function createDeclarationTypeDom(name: string, node: ts.Declaration) {
-  let decl: dom.NamespaceMember;
+  let decl: dom.NamespaceMember | undefined;
   if (ts.isClassLike(node)) {
-    decl = createClassDeclaration(name, node);
+    decl = createClassDeclaration(node, name);
   } else if (ts.isFunctionLike(node)) {
-    decl = createFunctionDeclaration(name, node);
+    decl = createFunctionDeclaration(node, name);
   } else if (ts.isVariableDeclaration(node)) {
-    decl = createVariableDeclaration(name, node);
+    decl = createVariableDeclaration(node, name);
   } else if (ts.isPropertyAccessExpression(node)) {
-    decl = dom.create.const(name, getPropertyAccessTypeDom(node));
+    decl = createDeclByPropertyAccess(node, name);
+  } else if (ts.isJSDocTypedefTag(node)) {
+    decl = createDeclByTypedefTag(node, name);
   } else {
     return;
   }
   return decl;
+}
+
+export function createDeclByPropertyAccess(node: ts.PropertyAccessExpression, name?: string) {
+  name = createNameByDecl(node, name);
+  return dom.create.const(name, getPropertyAccessTypeDom(node));
+}
+
+export function createNameByDecl(decl: ts.NamedDeclaration, name?: string) {
+  return name || (decl.name ? getDeclName(util.getText(decl.name)) : getAnonymousName());
+}
+
+export function createDeclByTypedefTag(node: ts.JSDocTypedefTag, name?: string) {
+  if (!node.typeExpression) {
+    return;
+  }
+
+  name = createNameByDecl(node, name);
+
+  // env.checker.getExportSymbolOfSymbol()
+  if (ts.isJSDocTypeLiteral(node.typeExpression)) {
+    const { members } = getJSDocTypeLiteralTypeDom(node.typeExpression);
+    createInterfaceWithCache(members, name);
+    return;
+  } else {
+    return dom.create.alias(name, getTypeDom(node.typeExpression.type));
+  }
 }
 
 export function getPropertyAccessTypeDom(node: ts.PropertyAccessExpression) {
@@ -554,11 +577,27 @@ export function getPropertyAccessTypeDom(node: ts.PropertyAccessExpression) {
 export function getReferenceTypeDom(typeNode: ts.TypeReferenceNode) {
   const ref = getReferenceTypeDomFromEntity(typeNode.typeName);
   if (!ref) return dom.type.any;
+
   // generic
   const typeArguments = util.getTypeArguments(typeNode);
   if (typeArguments && typeArguments.length) {
     ref.typeParameters = typeArguments.map(type => getTypeDom(type) || dom.type.any);
   }
+
+  if (ref.referType === dom.ReferTypes.lib) {
+    // build-in interface
+    switch (ref.name) {
+      case 'String':
+        return dom.type.string;
+      case 'Number':
+        return dom.type.number;
+      case 'Boolean':
+        return dom.type.boolean;
+      default:
+        break;
+    }
+  }
+
   return ref;
 }
 
@@ -712,8 +751,10 @@ export function tryCreateFunctionAsClass(fnName: string, node: ts.FunctionDeclar
   }
 }
 
-export function createFunctionDeclaration(fnName: string, node: ts.FunctionLike) {
+export function createFunctionDeclaration(node: ts.FunctionLike, fnName?: string) {
   let typeDom;
+
+  fnName = createNameByDecl(node, fnName);
 
   if (ts.isFunctionDeclaration(node)) {
     typeDom = tryCreateFunctionAsClass(fnName, node);
@@ -778,7 +819,7 @@ function collectImportModule(
     list: [],
     realPath,
     from: name,
-  } as ImportCacheElement;
+  } as envMod.ImportCacheElement;
 
   if (exportName) {
     let existImportObj = importObj.list.find(({ name }) => name === exportName);
@@ -801,10 +842,11 @@ export function getTypeNodeAtLocation(node: ts.Node, flag?: ts.NodeBuilderFlags)
   return env.checker.typeToTypeNode(type, undefined, flag || defaultBuildFlags);
 }
 
-export function createVariableDeclaration(constName: string, node: ts.VariableDeclaration) {
+export function createVariableDeclaration(node: ts.VariableDeclaration, name?: string) {
+  name = createNameByDecl(node, name);
   const typeNode = getTypeNodeAtLocation(node.name);
   const typeDom = getTypeDom(typeNode);
-  return dom.create.const(constName, typeDom);
+  return dom.create.const(name, typeDom);
 }
 
 // get decl name
@@ -818,12 +860,12 @@ export function getDeclName(name: string): string {
   }
 }
 
-export function createInterfaceWithCache(members: dom.ObjectTypeMember[]) {
+export function createInterfaceWithCache(members: dom.ObjectTypeMember[], name?: string) {
   const interfaceDeclare = env.interfaceList.find(obj => isEqual(obj.members, members));
   if (interfaceDeclare) {
     return interfaceDeclare;
   }
-  const nsi = createExportInterface(getAnonymousName());
+  const nsi = createExportInterface(name || getAnonymousName());
   nsi.members = members;
   env.interfaceList.push(nsi);
   return nsi;
@@ -857,112 +899,28 @@ export function createExportNameByFile(file: string) {
   return getDeclName(`_${util.formatName(name)}`);
 }
 
-// get opt from topEnv
-function getTopEnvOpt<T extends keyof Env = keyof Env>(key: T, def: Env[T]) {
-  return envStack.length ? envStack[0][key] : def;
-}
-
-// prepare env
-function prepareEnv(file: string, options: CreateOptions = {}) {
-  const program = ts.createProgram([ file ], {
-    target: ts.ScriptTarget.ES2017,
-    module: ts.ModuleKind.CommonJS,
-    allowJs: true,
-    noErrorTruncation: true,
-  });
-
-  // save env
-  if (env) {
-    envStack.push(env);
-  }
-
-  const checker = program.getTypeChecker();
-  const sourceFile = program.getSourceFile(file)!;
-  const ambientMods = checker.getAmbientModules();
-  const ambientModNames = ambientMods.map(mod => mod.escapedName.toString().replace(/^"|"$/g, ''));
-
-  // init env object
-  env = {
-    file,
-    dist: options.dist || `${path.dirname(file)}/${path.basename(file, path.extname(file))}.d.ts`,
-    deps: {},
-    program,
-    checker,
-    sourceFile,
-    declaration: {
-      import: [],
-      fragment: [],
-      export: [],
-    },
-    ambientModNames,
-    declareCache: [],
-    interfaceList: [],
-    exportFlags: ExportFlags.None,
-
-    // common obj in env tree
-    uniqId: getTopEnvOpt('uniqId', 100),
-    flags: getTopEnvOpt('flags', (options.flags || CreateDtsFlags.None)),
-    publicNames: getTopEnvOpt('publicNames', {}),
-    importCache: getTopEnvOpt('importCache', {}),
-
-    // get string
-    toString() {
-      return [
-        dom.emit(this.declaration.import),
-        dom.emit(this.declaration.fragment),
-        dom.emit(this.declaration.export),
-      ].join('');
-    },
-
-    // write file
-    write() {
-      const content = this.toString();
-      fs.writeFileSync(this.dist, content);
-      return content;
-    },
-  };
-
-  // cache env
-  envCache[file] = env;
-}
-
-// end env
-function endEnv() {
-  const response = env;
-
-  // restore env
-  env = envStack.pop()!;
-
-  if (!envStack.length) {
-    // clean cache
-    envCache = {};
-  }
-
-  return response;
-}
-
 // create dts for file
 export function create(file: string, options?: CreateOptions) {
   // check cache
-  const cacheEnv = envCache[file];
+  const cacheEnv = envMod.getEnv(file);
   if (cacheEnv) {
     return cacheEnv;
   }
 
   // start program
-  prepareEnv(file, options);
+  envMod.createEnv(file, options);
 
   const declaration = env.declaration;
   if (!env.sourceFile) {
     declaration.fragment.push(dom.create.comment('source file create fail'));
-    return endEnv();
+    return envMod.popEnv();
   }
 
   // check node
   const { exportEqual, exportList } = util.findExports(env.sourceFile);
   if (!exportEqual && !exportList.size) {
     declaration.fragment.push(dom.create.comment('cannot find export module'));
-    return endEnv();
+    return envMod.popEnv();
   }
 
   env.exportFlags = exportEqual
@@ -1004,7 +962,7 @@ export function create(file: string, options?: CreateOptions) {
               ));
 
               if (tds.length === 1 && dom.util.isCanBeExportDefault(tds[0])) {
-                tds[0].flags = (tds[0].flags || dom.DeclarationFlags.None) | dom.DeclarationFlags.ExportDefault;
+                tds[0].flags! |= dom.DeclarationFlags.ExportDefault;
                 return;
               }
             }
@@ -1061,5 +1019,5 @@ export function create(file: string, options?: CreateOptions) {
     declaration.fragment.push(env.exportNamespace);
   }
 
-  return endEnv();
+  return envMod.popEnv();
 }

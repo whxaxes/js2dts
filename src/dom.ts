@@ -37,6 +37,13 @@
 
 const brRegex = /\r?\n/g;
 
+export enum ReferTypes {
+  ambient = '__ambient',
+  custom = '__custom',
+  declaration = '__declaration',
+  lib = '__lib',
+}
+
 export interface DeclarationBase {
   jsDocComment?: JsDocCommentDeclaration[];
   comment?: CommentDeclaration;
@@ -248,6 +255,7 @@ export interface ArrayTypeReference {
 export interface NamedTypeReference {
   kind: 'name';
   name: string;
+  referType: ReferTypes;
   typeParameters: TypeParameter[];
 }
 
@@ -797,13 +805,14 @@ export const create = {
     };
   },
 
-  namedTypeReference(name: string | NamedDeclarationBase): NamedTypeReference {
+  namedTypeReference(name: string | NamedDeclarationBase, referType: ReferTypes = ReferTypes.declaration): NamedTypeReference {
     const isNamedDeclaration = util.isNamedDeclarationBase(name);
     return {
       kind: 'name',
       name: !isNamedDeclaration
         ? name
         : util.getFullName(<NamedDeclarationBase> name),
+      referType,
       typeParameters: [],
     };
   },
