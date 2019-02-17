@@ -5,11 +5,13 @@ export function formatUrl(url: string) {
   return url.replace(/\\/g, '/');
 }
 
-export function formatName(name: string) {
+export function formatName(name: string, upper?: boolean) {
   name = name
     .replace(/[\/\\._-][a-z]/gi, s => s.substring(1).toUpperCase())
     .replace(/\/|\\|\./g, '');
-  return name[0].toUpperCase() + name.substring(1);
+  return upper
+    ? (name[0].toUpperCase() + name.substring(1))
+    : name;
 }
 
 export function getTypeArguments(node: ts.TypeNode) {

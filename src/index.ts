@@ -896,7 +896,7 @@ export function createExportNameByFile(file: string) {
   }
 
   // add _ for prevent duplicate with global declaration
-  return getDeclName(`_${util.formatName(name)}`);
+  return getDeclName(`_${util.formatName(name, true)}`);
 }
 
 // create dts for file
