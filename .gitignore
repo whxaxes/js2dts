@@ -61,6 +61,3 @@ package-lock.json
 dist/
 tests/fixtures/**/check.js
 tests/fixtures/**/tsconfig.json
-tests/fixtures/**/*.d.ts
-
-!tests/fixtures/normal/custom.1/mod/index.d.ts

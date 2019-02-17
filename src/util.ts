@@ -5,11 +5,13 @@ export function formatUrl(url: string) {
   return url.replace(/\\/g, '/');
 }
 
-export function formatName(name: string) {
+export function formatName(name: string, upper?: boolean) {
   name = name
     .replace(/[\/\\._-][a-z]/gi, s => s.substring(1).toUpperCase())
     .replace(/\/|\\|\./g, '');
-  return name[0].toUpperCase() + name.substring(1);
+  return upper
+    ? (name[0].toUpperCase() + name.substring(1))
+    : name;
 }
 
 export function getTypeArguments(node: ts.TypeNode) {
@@ -76,11 +78,19 @@ export function isDeclareModule(node: ts.Node): node is ts.ModuleDeclaration {
   return ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name);
 }
 
+export function formatIdentifierName(name: string) {
+  return name.replace(/^("|')|("|')$/g, '');
+}
+
 export function getText(node?: ts.Node) {
   if (node) {
-    return ts.isIdentifier(node)
-      ? node.text.replace(/^("|')|("|')$/g, '')
-      : ts.isStringLiteral(node) ? node.text : '';
+    if (ts.isIdentifier(node)) {
+      return formatIdentifierName(node.text);
+    } else if (ts.isStringLiteral(node)) {
+      return node.text;
+    } else if (ts.isQualifiedName(node)) {
+      return getText(node.right);
+    }
   }
   return '';
 }
