@@ -584,21 +584,35 @@ export function getReferenceTypeDom(typeNode: ts.TypeReferenceNode) {
     ref.typeParameters = typeArguments.map(type => getTypeDom(type) || dom.type.any);
   }
 
-  if (ref.referType === dom.ReferTypes.lib) {
-    // build-in interface
-    switch (ref.name) {
-      case 'String':
-        return dom.type.string;
-      case 'Number':
-        return dom.type.number;
-      case 'Boolean':
-        return dom.type.boolean;
-      default:
-        break;
-    }
+  return transformBuildInRefer(ref) || ref;
+}
+
+export function transformBuildInRefer(ref: dom.NamedTypeReference) {
+  if (ref.referType !== dom.ReferTypes.lib) {
+    return;
   }
 
-  return ref;
+  // build-in interface
+  switch (ref.name) {
+    case 'String':
+      return dom.type.string;
+    case 'Number':
+      return dom.type.number;
+    case 'Boolean':
+      return dom.type.boolean;
+    case 'Function':
+      return dom.create.functionType([
+        dom.create.parameter(
+          'args',
+          dom.type.array(dom.type.any),
+          dom.ParameterFlags.Rest,
+        ),
+      ], dom.type.any);
+    case 'Array':
+      return dom.type.array(ref.typeParameters[0] || dom.type.any);
+    default:
+      break;
+  }
 }
 
 export function getArrayTypeDom(typeNode: ts.ArrayTypeNode) {

@@ -5,8 +5,8 @@ export const TIMEOUT: number;
 export const TIMEOUTS: any[];
 export const agent: any;
 export const httpsAgent: any;
-export function curl(url: any, args?: any, callback?: Function, ...args_1: any[]): any;
-export function request(url: any, args?: any, callback?: Function, ...args_1: any[]): any;
+export function curl(url: any, args?: any, callback?: (...args: any[]) => any, ...args_1: any[]): any;
+export function request(url: any, args?: any, callback?: (...args: any[]) => any, ...args_1: any[]): any;
 export function requestWithCallback(url: any, args: any, callback: any, ...args_1: any[]): any;
 export function requestThunk(url: any, args: any): (callback: any) => void;
 declare class HttpClient_1 {
@@ -108,8 +108,8 @@ declare namespace _Urllib_1 {
    * @return {HttpRequest} req object.
    * @api public
    */
-  export function request(url: any, args?: any, callback?: Function, ...args_1: any[]): any;
-  export function curl(url: any, args?: any, callback?: Function, ...args_1: any[]): any;
+  export function request(url: any, args?: any, callback?: (...args: any[]) => any, ...args_1: any[]): any;
+  export function curl(url: any, args?: any, callback?: (...args: any[]) => any, ...args_1: any[]): any;
   export function requestThunk(url: any, args: any): (callback: any) => void;
   export function requestWithCallback(url: any, args: any, callback: any, ...args_1: any[]): any;
 }

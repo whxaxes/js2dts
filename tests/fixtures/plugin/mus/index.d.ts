@@ -27,15 +27,15 @@ declare namespace _Parser {
   export const constant: typeof _Constant;
   export function parseSpaceAttr(expr: any, cb: any): void;
   export function parseNormalAttr(d: any, expr: any, cb: any): void;
-  export function parseAttr(expr: any, attrName?: string): Function;
+  export function parseAttr(expr: any, attrName?: string): (...args: any[]) => any;
   export interface T104 {
     methodName: any;
-    genRender: Function;
+    genRender: (...args: any[]) => any;
   }
   export function parseMacroExpr(expr: any): T104;
   export interface T105 {
     safe: boolean;
-    render: Function;
+    render: (...args: any[]) => any;
   }
   export function parseCommonExpr(expr: any): T105;
   export interface T106 {

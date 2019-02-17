@@ -103,5 +103,9 @@ describe('index.test.ts', () => {
     it('plugin#cookies', async () => {
       await checkDts('plugin/cookies', false);
     });
+
+    it('plugin#ndir', async () => {
+      await checkDts('plugin/ndir', false);
+    });
   });
 });

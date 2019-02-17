@@ -234,7 +234,7 @@ declare class EggCore extends koa {
    * @return {Application} app
    * @since 1.0.0
    */
-  use(fn: Function): any;
+  use(fn: (...args: any[]) => any): any;
   /**
    * Whether `application` or `agent`
    * @member {String}
@@ -299,7 +299,7 @@ declare class EggCore extends koa {
    *   console.log('done');
    * });
    */
-  ready(flagOrFunction: boolean | Function | Error): Promise<any>;
+  ready(flagOrFunction: boolean | ((...args: any[]) => any) | Error): Promise<any>;
   /**
    * If a client starts asynchronously, you can register `readyCallback`,
    * then the application will wait for the callback to ready
@@ -318,7 +318,7 @@ declare class EggCore extends koa {
    * const done = app.readyCallback('mysql');
    * mysql.ready(done);
    */
-  readyCallback(name: string, opts: any): Function;
+  readyCallback(name: string, opts: any): (...args: any[]) => any;
   /**
    * Register a function that will be called when app close.
    *
@@ -331,7 +331,7 @@ declare class EggCore extends koa {
    *
    * @param {Function} fn - the function that can be generator function or async function.
    */
-  beforeClose(fn: Function): void;
+  beforeClose(fn: (...args: any[]) => any): void;
   /**
    * Close all, it will close
    * - callbacks registered by beforeClose
@@ -374,7 +374,7 @@ declare class EggCore extends koa {
    wrapped(true).then((value) => console.log(value));
    ```
    */
-  toAsyncFunction(fn: Function): any;
+  toAsyncFunction(fn: (...args: any[]) => any): any;
   /**
    * Convert an object with generator functions to a Promisable one.
    * @param  {Mixed} obj The inputted object.
@@ -422,12 +422,12 @@ declare namespace _EggCore {
     target: any;
     match: string;
     ignore: string;
-    initializer: Function;
+    initializer: (...args: any[]) => any;
     call: boolean;
     override: boolean;
     inject: any;
-    filter: Function;
-    caseStyle: string | Function;
+    filter: (...args: any[]) => any;
+    caseStyle: string | ((...args: any[]) => any);
   }
   export interface T105 {
     directory: any;

@@ -14,7 +14,7 @@ export interface FnObj {
     d(): T101;
     e: Promise<string>;
     f: boolean | string;
-    g?: Array<boolean>;
+    g?: boolean[];
     h?: Array<Array<boolean | string>>;
     i?: {
       a?: string;
