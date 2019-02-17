@@ -1,4 +1,10 @@
 
+0.2.0 / 2019-02-17
+==================
+
+  * feat: support typedef for jsdoc (#7)
+  * fix: support parenthesized type (#6)
+
 0.1.5 / 2019-02-16
 ==================
 
