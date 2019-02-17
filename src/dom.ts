@@ -1202,7 +1202,7 @@ export function getWriter(
     output = output + config.outputEol;
   }
 
-  function needsParens(d: Type) {
+  function isComplexType(d: Type) {
     if (typeof d === 'string') {
       return false;
     }
@@ -1338,10 +1338,16 @@ export function getWriter(
           break;
 
         case 'array':
-          if (needsParens(e.type)) print('(');
-          writeReference(e.type);
-          if (needsParens(e.type)) print(')');
-          print('[]');
+          if (isComplexType(e.type)) {
+            // Array<XXX>
+            print('Array<');
+            writeReference(e.type);
+            print('>');
+          } else {
+            // xxx[]
+            writeReference(e.type);
+            print('[]');
+          }
           break;
 
         case 'object':
@@ -1669,7 +1675,7 @@ export function getWriter(
     printDeclarationComments(e);
     start(e.name);
 
-    if (e.value) {
+    if (e.value !== undefined) {
       if (typeof e.value === 'string') {
         print(` = "${e.value}"`);
       } else {

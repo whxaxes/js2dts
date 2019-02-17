@@ -6,6 +6,7 @@ exports.MyTest = class {
    * @param {Object} opt 
    * @param {String} opt.a 123
    * @param {String} [opt.b] 123
+   * @param {Array<String|Number>} [opt.cc] 123
    */
   fn(opt) {
     return opt;
