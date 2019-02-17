@@ -95,11 +95,11 @@ export function getAnonymousName() {
   return `T${env.uniqId++}`;
 }
 
-// get type dom from typeNode
-export function getTypeDom(typeNode?: ts.Node, flags: GetTypeDomFlags = GetTypeDomFlags.None) {
-  if (!typeNode) return;
+// get type dom from node
+export function getTypeDom(node?: ts.Node, flags: GetTypeDomFlags = GetTypeDomFlags.None) {
+  if (!node) return;
 
-  switch (typeNode.kind) {
+  switch (node.kind) {
     case SyntaxKind.StringKeyword:
     case SyntaxKind.StringLiteral:
       return dom.type.string;
@@ -107,7 +107,7 @@ export function getTypeDom(typeNode?: ts.Node, flags: GetTypeDomFlags = GetTypeD
     case SyntaxKind.NumericLiteral:
       return dom.type.number;
     case SyntaxKind.LiteralType:
-      return getLiteralTypeDom(typeNode as ts.LiteralTypeNode);
+      return getLiteralTypeDom(node as ts.LiteralTypeNode);
     case SyntaxKind.BooleanKeyword:
     case SyntaxKind.TrueKeyword:
     case SyntaxKind.FalseKeyword:
@@ -119,22 +119,24 @@ export function getTypeDom(typeNode?: ts.Node, flags: GetTypeDomFlags = GetTypeD
     case SyntaxKind.ThisKeyword:
       return dom.type.this;
     case SyntaxKind.TypeQuery:
-      return getTypeQueryTypeDom(typeNode as ts.TypeQueryNode);
+      return getTypeQueryTypeDom(node as ts.TypeQueryNode);
     case SyntaxKind.ArrayType:
-      return getArrayTypeDom(typeNode as ts.ArrayTypeNode);
+      return getArrayTypeDom(node as ts.ArrayTypeNode);
     case SyntaxKind.TypeLiteral:
-      return getTypeLiteralTypeDom(typeNode as ts.TypeLiteralNode, flags);
+      return getTypeLiteralTypeDom(node as ts.TypeLiteralNode, flags);
     case SyntaxKind.TypeReference:
-      return getReferenceTypeDom(typeNode as ts.TypeReferenceNode);
+      return getReferenceTypeDom(node as ts.TypeReferenceNode);
     case SyntaxKind.UnionType:
-      return getUnionTypeDom(typeNode as ts.UnionTypeNode);
+      return getUnionTypeDom(node as ts.UnionTypeNode);
     case SyntaxKind.IntersectionType:
-      return getIntersectionTypeDom(typeNode as ts.IntersectionTypeNode);
+      return getIntersectionTypeDom(node as ts.IntersectionTypeNode);
     case SyntaxKind.FunctionType:
     case SyntaxKind.ConstructorType:
-      return getFunctionTypeDom(typeNode as ts.FunctionTypeNode);
+      return getFunctionTypeDom(node as ts.FunctionTypeNode);
     case SyntaxKind.ImportType:
-      return getImportTypeDom(typeNode as ts.ImportTypeNode);
+      return getImportTypeDom(node as ts.ImportTypeNode);
+    case SyntaxKind.ParenthesizedType:
+      return getTypeDom((node as ts.ParenthesizedTypeNode).type);
     case SyntaxKind.AnyKeyword:
     case SyntaxKind.NullKeyword:
     case SyntaxKind.UndefinedKeyword:
