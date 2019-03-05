@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { UnionType } from 'typescript';
 import path from 'path';
 import fs from 'fs';
 import * as util from './util';
@@ -102,12 +103,52 @@ export function getTypeDom(node?: ts.Node, flags: GetTypeDomFlags = GetTypeDomFl
       return getImportTypeDom(node as ts.ImportTypeNode);
     case SyntaxKind.ParenthesizedType:
       return getTypeDom((node as ts.ParenthesizedTypeNode).type);
+    case SyntaxKind.TypeOperator:
+      return getOperatorTypeDom(node as ts.TypeOperatorNode);
     case SyntaxKind.AnyKeyword:
     case SyntaxKind.NullKeyword:
     case SyntaxKind.UndefinedKeyword:
     default:
       return dom.type.any;
   }
+}
+
+// get type dom from type
+export function getTypeDomFromType(type: ts.Type) {
+  if (type.flags & ts.TypeFlags.String) {
+    return dom.type.string;
+  } else if (type.flags & ts.TypeFlags.Number) {
+    return dom.type.number;
+  } else if (type.flags & ts.TypeFlags.Boolean) {
+    return dom.type.boolean;
+  } else if (type.flags & ts.TypeFlags.NumberLiteral) {
+    return (<ts.NumberLiteralType> type).value;
+  } else if (type.flags & ts.TypeFlags.StringLiteral) {
+    return JSON.stringify((<ts.StringLiteralType> type).value);
+  } else if (type.flags & ts.TypeFlags.Any) {
+    return dom.type.any;
+  } else if (type.flags & ts.TypeFlags.Null) {
+    return dom.type.null;
+  } else if (type.flags & ts.TypeFlags.Undefined) {
+    return dom.type.undefined;
+  } else if (type.flags & ts.TypeFlags.Void) {
+    return dom.type.void;
+  } else if (type.flags & ts.TypeFlags.Union) {
+    return dom.create.union((<UnionType> type).types.map(t => getTypeDomFromType(t)));
+  } else if (type.flags & ts.TypeFlags.Intersection) {
+    return dom.create.intersection((<ts.IntersectionType> type).types.map(t => getTypeDomFromType(t)));
+  }
+
+  const typeNode = env.checker.typeToTypeNode(type);
+  return getTypeDom(typeNode) || dom.type.any;
+}
+
+export function getOperatorTypeDom(node: ts.TypeOperatorNode) {
+  if (node.operator === SyntaxKind.KeyOfKeyword) {
+    const refer = getTypeDom(node.type);
+    return refer === dom.type.any ? refer : dom.create.keyof(refer);
+  }
+  return dom.type.any;
 }
 
 export function getCallSignatureDeclarationTypeDom(node: ts.CallSignatureDeclaration) {
@@ -140,20 +181,23 @@ export function getJSDocTypeLiteralTypeDom(node: ts.JSDocTypeLiteral) {
     if (tag.typeExpression) {
       const typeNode = tag.typeExpression.type;
       const propName = util.getText(tag.name);
-      let propTypeNode: dom.ClassMember;
+      let propTypeDom: dom.ClassMember;
       if (ts.isJSDocTypeLiteral(typeNode)) {
         // jsdoc typedef
-        propTypeNode = dom.create.property(propName, getJSDocTypeLiteralTypeDom(typeNode));
+        propTypeDom = dom.create.property(propName, getJSDocTypeLiteralTypeDom(typeNode));
       } else {
-        propTypeNode = getPropTypeDomByNode(propName, typeNode);
+        const type = env.checker.getTypeFromTypeNode(typeNode);
+        // convert type dom by type.
+        const typeDom = getTypeDomFromType(type);
+        propTypeDom = dom.create.property(propName, typeDom);
       }
 
       if (tag.isBracketed) {
         // [xxxx]
-        propTypeNode.flags! |= dom.DeclarationFlags.Optional;
+        propTypeDom.flags! |= dom.DeclarationFlags.Optional;
       }
 
-      addMemberToObj(decl, propTypeNode);
+      addMemberToObj(decl, propTypeDom);
     }
   });
   return decl;
@@ -457,11 +501,22 @@ export function getReferenceModule(symbol: ts.Symbol) {
 
 // get reference typeDom by name
 export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
-  let interfaceName = util.getText(node);
   let referType: dom.ReferTypes | undefined;
+  let referenceModule: ts.Declaration | false | undefined;
   const symbol = env.checker.getSymbolAtLocation(node) || util.getSymbol(node);
-  if (!symbol) return;
+  if (!symbol) {
+    const decl = util.tryFindDeclarationByName(node.getSourceFile(), node);
+    if (!decl) return;
+    referenceModule = decl;
+  } else {
+    referenceModule = getReferenceModule(symbol);
+    if (referenceModule === false) {
+      // ignore false
+      return;
+    }
+  }
 
+  let interfaceName = util.getText(node);
   const checkAssignEqual = (node: ts.Node, name: string) => {
     const symbol = util.getSymbol(node)!;
     if (!symbol || !symbol.exports) return false;
@@ -469,11 +524,6 @@ export function getReferenceTypeDomFromEntity(node: ts.EntityName) {
     return exportAssignment &&
       util.getText((exportAssignment.valueDeclaration as ts.ExportAssignment).expression) === name;
   };
-
-  const referenceModule = getReferenceModule(symbol);
-  if (referenceModule === false) {
-    return;
-  }
 
   if (referenceModule) {
     if (util.isDeclareModule(referenceModule)) {

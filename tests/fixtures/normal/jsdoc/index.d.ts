@@ -11,11 +11,11 @@ export interface FnObj {
   a: string;
   b?: {
     c: number;
-    d(): T101;
+    d: () => T101;
     e: Promise<string>;
-    f: boolean | string;
+    f: string | boolean | boolean;
     g?: boolean[];
-    h?: Array<Array<boolean | string>>;
+    h?: Array<Array<string | boolean>>;
     i?: {
       a?: string;
     };

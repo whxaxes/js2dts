@@ -5,6 +5,23 @@ export function formatUrl(url: string) {
   return url.replace(/\\/g, '/');
 }
 
+// try find declaration in root
+export function tryFindDeclarationByName(sourceFile: ts.SourceFile, name: ts.EntityName): ts.Declaration {
+  let decl;
+  if (ts.isIdentifier(name)) {
+    const declName = name.getText();
+    sourceFile.statements.forEach(statement => {
+      if (decl) return;
+      if (hasName(statement) && getText(statement.name) === declName) {
+        decl = statement;
+      } else if (ts.isVariableStatement(statement)) {
+        decl = statement.declarationList.declarations.find(decl => getText(decl.name) === declName);
+      }
+    });
+  }
+  return decl;
+}
+
 export function formatName(name: string, upper?: boolean) {
   name = name
     .replace(/[\/\\._-][a-z]/gi, s => s.substring(1).toUpperCase())
@@ -20,6 +37,10 @@ export function getTypeArguments(node: ts.TypeNode) {
 
 export function getSymbol(node: ts.Node): ts.Symbol | undefined {
   return (node as any).symbol;
+}
+
+export function hasName(node: ts.Node): node is ts.NamedDeclaration {
+  return !!(node as ts.NamedDeclaration).name;
 }
 
 export function getDeclarationBySymbol(symbol: ts.Symbol) {

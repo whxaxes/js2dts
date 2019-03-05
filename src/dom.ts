@@ -264,6 +264,11 @@ export interface TypeofReference {
   type: NamedTypeReference;
 }
 
+export interface KeyofReference {
+  kind: 'keyof';
+  type: NamedTypeReference;
+}
+
 export interface StringLiteral {
   kind: 'string-literal';
   value: string;
@@ -341,6 +346,7 @@ export type Type =
   | PrimitiveType
   | ObjectType
   | TypeofReference
+  | KeyofReference
   | FunctionType
   | TypeParameter
   | ThisType;
@@ -437,6 +443,10 @@ export const util = {
 
   isTypeofReference(node): node is TypeofReference {
     return (node as TypeofReference).kind === 'typeof';
+  },
+
+  isKeyofReference(node): node is KeyofReference {
+    return (node as KeyofReference).kind === 'keyof';
   },
 
   isFunctionType(node): node is FunctionType {
@@ -907,6 +917,13 @@ export const create = {
     };
   },
 
+  keyof(type: NamedTypeReference): KeyofReference {
+    return {
+      kind: 'keyof',
+      type,
+    };
+  },
+
   tripleSlashReferencePathDirective(
     path: string,
   ): TripleSlashReferencePathDirective {
@@ -1031,6 +1048,7 @@ export const reservedWords = [
   'true',
   'try',
   'typeof',
+  'keyof',
   'var',
   'void',
   'volatile',
@@ -1387,6 +1405,11 @@ export function getWriter(
 
         case 'typeof':
           print('typeof ');
+          writeReference(e.type);
+          break;
+
+        case 'keyof':
+          print('keyof ');
           writeReference(e.type);
           break;
 
