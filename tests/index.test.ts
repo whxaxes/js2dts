@@ -77,6 +77,10 @@ describe('index.test.ts', () => {
     it('normal#jsdoc', async () => {
       await checkDts('normal/jsdoc');
     });
+
+    it('normal#jsdoc.1', async () => {
+      await checkDts('normal/jsdoc.1');
+    });
   });
 
   describe('plugin', () => {

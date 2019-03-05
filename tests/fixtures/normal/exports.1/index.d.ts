@@ -1,4 +1,4 @@
-import * as chokidar from 'chokidar';
+import * as _@typesChokidar@175@@typesChokidar from '_@types_chokidar@1.7.5@@types/chokidar';
 export interface T100 {
   watchDirs: any[];
   ignoreDirs: any[];
@@ -44,7 +44,7 @@ export interface T100 {
  */
 export const development: T100;
 export function abb(): void;
-export default function myFn(): typeof chokidar;
+export default function myFn(): typeof _@typesChokidar@175@@typesChokidar;
 export const other: number;
 export const otherFn: typeof myFn;
 export const abbb: number;

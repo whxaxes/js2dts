@@ -24,9 +24,11 @@ export enum ExportFlags {
   Export = 1 << 1,
 }
 
+const NODE_MODULES = 'node_modules';
+const TYPE_ROOT = '@types/';
+const DTS_EXT = '.d.ts';
 const SyntaxKind = ts.SyntaxKind;
-const nodeModulesRoot = util.formatUrl(path.resolve(process.cwd(), './node_modules'));
-const typeRoot = util.formatUrl(path.resolve(nodeModulesRoot, './@types/'));
+const nodeModulesRoot = util.formatUrl(path.resolve(process.cwd(), `./${NODE_MODULES}`));
 const fromLibRE = /typescript\/lib\/lib(\.\w+)*\.d\.ts$/;
 
 // get typedom flags
@@ -789,33 +791,55 @@ export function createFunctionDeclaration(node: ts.FunctionLike, fnName?: string
   return typeDom;
 }
 
+// try get package info by file url
+function tryGetPackageInfo(fileUrl: string) {
+  let pkgPath;
+  let currentDir = path.dirname(fileUrl);
+  while (!fs.existsSync(pkgPath = path.resolve(currentDir, './package.json'))) {
+    currentDir = path.dirname(currentDir);
+    if (currentDir === '/' || currentDir.endsWith(NODE_MODULES)) {
+      pkgPath = null;
+      break;
+    }
+  }
+
+  if (pkgPath) {
+    const pkgInfo = JSON.parse(fs.readFileSync(pkgPath).toString());
+    return {
+      dir: currentDir,
+      pkgInfo,
+    };
+  }
+
+  return;
+}
+
 export function getModNameByPath(fileName: string) {
   if (env.ambientModNames.includes(fileName)) {
     return fileName;
   }
 
-  const extname = '.d.ts';
   fileName = util.normalizeDtsUrl(fileName);
 
-  if (!fileName.endsWith(extname) || !fs.existsSync(fileName)) {
+  if (!fileName.endsWith(DTS_EXT) || !fs.existsSync(fileName)) {
     return;
   }
 
-  const dir = path.dirname(fileName);
-  const basename = path.basename(fileName, extname);
+  const result = tryGetPackageInfo(fileName)! || {};
+  const basename = path.basename(fileName, DTS_EXT);
   if (fileName.startsWith(nodeModulesRoot)) {
-    const modRoot = fileName.startsWith(typeRoot) ? typeRoot : nodeModulesRoot;
-    const pkgPath = path.resolve(dir, './package.json');
-    const pkgInfo = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath).toString()) : {};
-    const typesUrl = util.formatUrl(util.normalizeDtsUrl(path.resolve(dir, pkgInfo.types || './index.d.ts')));
-    let modName = dir.substring(modRoot.length + 1);
+    if (!result.pkgInfo || !result.pkgInfo.name) return;
 
-    if (fileName !== typesUrl) {
-      modName = `${modName}/${basename}`;
+    const name = result.pkgInfo.name;
+    const modName = name.startsWith(TYPE_ROOT) ? name.substring(TYPE_ROOT.length) : name;
+    const modPath = fileName.substring(result.dir.length + 1);
+    if (modPath === 'index.d.ts' || result.pkgInfo.types === modPath) {
+      return modName;
     }
 
-    return util.formatUrl(modName);
+    return `${modName}/${modPath.substring(0, modPath.length - DTS_EXT.length)}`;
   } else {
+    const dir = path.dirname(fileName);
     const from = util.formatUrl(path.relative(path.dirname(env.dist), path.join(dir, basename)));
     return from.startsWith('.') ? from : `./${from}`;
   }

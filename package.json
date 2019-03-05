@@ -11,9 +11,9 @@
   "scripts": {
     "build": "del ./dist && tsc -d",
     "build:w": "npm run build -- -w",
-    "test": "npm run build && jest",
+    "test": "npm run build && jest --no-watchman",
     "cov": "npm run test -- --coverage",
-    "ci": "tsc && jest --coverage"
+    "ci": "tsc && jest --coverage --no-watchman"
   },
   "repository": {
     "type": "git",

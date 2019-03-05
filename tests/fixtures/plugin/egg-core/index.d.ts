@@ -1,4 +1,4 @@
-import * as koa from 'koa';
+import * as _@typesKoa@2048@@typesKoa from '_@types_koa@2.0.48@@types/koa';
 import { EventEmitter } from 'events';
 declare class Timing {
   constructor();
@@ -212,7 +212,7 @@ declare class EggLoader {
   getTypeFiles(filename: any): string[];
   resolveModule(filepath: any): string;
 }
-declare class EggCore extends koa {
+declare class EggCore extends _@typesKoa@2048@@typesKoa {
   timing: Timing;
   BaseContextClass: typeof BaseContextClass;
   Controller: typeof BaseContextClass;

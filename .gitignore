@@ -61,3 +61,4 @@ package-lock.json
 dist/
 tests/fixtures/**/check.js
 tests/fixtures/**/tsconfig.json
+.history/
