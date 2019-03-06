@@ -139,7 +139,7 @@ export function getTypeDomFromType(type: ts.Type) {
     return dom.create.intersection((<ts.IntersectionType> type).types.map(t => getTypeDomFromType(t)));
   }
 
-  const typeNode = env.checker.typeToTypeNode(type);
+  const typeNode = env.checker.typeToTypeNode(type, undefined, defaultBuildFlags);
   return getTypeDom(typeNode) || dom.type.any;
 }
 
