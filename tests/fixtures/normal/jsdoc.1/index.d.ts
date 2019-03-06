@@ -26,5 +26,6 @@ export interface CheckOption {
 
 /**
  * @param {CheckOption} opt
+ * @return {CheckOption}
  */
 export function test(opt: CheckOption): CheckOption;

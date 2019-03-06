@@ -22,6 +22,7 @@ const LOG_LEVELS = {
 
 /**
  * @param {CheckOption} opt
+ * @return {CheckOption}
  */
 exports.test = opt => {
   return opt;

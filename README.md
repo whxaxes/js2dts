@@ -41,6 +41,7 @@ Options:
   -v, --version      output the version number
   -d, --dist [path]  Create dts to giving path (default to the same dir as file)
   -t, --terminal     Output the result to terminal instead of writing file to disk
+  --no-prefix        The generated code will has no prefix
   --ignore-private   Private properties are also being export
   -h, --help         output usage information
 ```

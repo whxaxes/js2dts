@@ -14,6 +14,7 @@ const program = new Command()
   .usage('[options] <file>')
   .option('-d, --dist [path]', 'Create dts to giving path (default to the same dir as file)')
   .option('-t, --terminal', 'Output the result to terminal instead of writing file to disk')
+  .option('--no-prefix', 'The generated code will has no prefix')
   .option('--ignore-private', 'Private properties are also being export');
 
 program.parse(process.argv);
@@ -51,5 +52,5 @@ const env = create(file, {
 if (program.terminal) {
   console.log(env.toString());
 } else {
-  env.write();
+  env.write(program.noPrefix ? '' : `// Generate by [${packInfo.name}](${packInfo.homepage})`);
 }

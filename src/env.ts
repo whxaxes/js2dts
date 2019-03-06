@@ -37,7 +37,7 @@ export interface Env {
   ambientModNames: string[];
   exportFlags: ExportFlags;
   toString: () => string;
-  write: () => string;
+  write: (prefix?: string) => string;
 }
 
 export let env: Env;
@@ -111,9 +111,9 @@ export function createEnv(file: string, options: CreateOptions = {}) {
     },
 
     // write file
-    write() {
+    write(prefix?: string) {
       const content = this.toString();
-      fs.writeFileSync(this.dist, content);
+      fs.writeFileSync(this.dist, `${prefix ? `${prefix}\n\n` : ''}${content}`);
       return content;
     },
   };
