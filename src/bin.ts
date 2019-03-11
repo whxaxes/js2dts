@@ -52,5 +52,5 @@ const env = create(file, {
 if (program.terminal) {
   console.log(env.toString());
 } else {
-  env.write(program.noPrefix ? '' : `// Generate by [${packInfo.name}](${packInfo.homepage})`);
+  env.write(program.noPrefix ? '' : `// Generate by [${packInfo.name}@${packInfo.version}](${packInfo.homepage})`);
 }
