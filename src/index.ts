@@ -29,7 +29,13 @@ const NODE_MODULES = 'node_modules';
 const TYPE_ROOT = '@types/';
 const DTS_EXT = '.d.ts';
 const SyntaxKind = ts.SyntaxKind;
-const nodeModulesRoot = util.formatUrl(path.resolve(process.cwd(), `./${NODE_MODULES}`));
+const nodeModulesRoots = [
+  util.formatUrl(path.resolve(process.cwd(), `./${NODE_MODULES}`)),
+];
+const cwdPkgInfo = tryGetPackageInfo(process.cwd());
+if (cwdPkgInfo && cwdPkgInfo.dir) {
+  nodeModulesRoots.push(util.formatUrl(path.resolve(cwdPkgInfo.dir, `./${NODE_MODULES}`)));
+}
 const fromLibRE = /typescript\/lib\/lib(\.\w+)*\.d\.ts$/;
 
 // get typedom flags
@@ -473,7 +479,7 @@ export function getReferenceModule(symbol: ts.Symbol) {
   if (!symbolDeclaration) return false;
   const declarationFile = symbolDeclaration.getSourceFile().fileName;
   const isFromLib = declarationFile.match(fromLibRE);
-  const isFromNodeModule = declarationFile.startsWith(nodeModulesRoot);
+  const isFromNodeModule = nodeModulesRoots.find(r => declarationFile.startsWith(r));
   if (isFromLib) {
     // build-in module
     return;
@@ -877,9 +883,8 @@ export function getModNameByPath(fileName: string) {
 
   const result = tryGetPackageInfo(fileName)! || {};
   const basename = path.basename(fileName, DTS_EXT);
-  if (fileName.startsWith(nodeModulesRoot)) {
-    if (!result.pkgInfo || !result.pkgInfo.name) return;
-
+  const pkgName = result.pkgInfo && result.pkgInfo.name;
+  if (pkgName && nodeModulesRoots.find(r => fileName.startsWith(r))) {
     const name = result.pkgInfo.name;
     const modName = name.startsWith(TYPE_ROOT) ? name.substring(TYPE_ROOT.length) : name;
     const modPath = fileName.substring(result.dir.length + 1);
@@ -944,6 +949,7 @@ export function createVariableDeclaration(node: ts.VariableDeclaration, name?: s
 // get decl name
 export function getDeclName(name: string): string {
   if (env.publicNames[name] === undefined) {
+    name = dom.reservedWords.includes(name) ? `_${name}` : name;
     env.publicNames[name] = 0;
     return name;
   } else {
@@ -1039,10 +1045,7 @@ export function create(file: string, options?: CreateOptions) {
       let typeDom = getTypeDom(typeNode) || dom.type.any;
       if (env.exportFlags & ExportFlags.Export) {
         if (name === 'default') {
-          const name = getDeclName(dom.util.isNamedDeclarationBase(typeDom)
-            ? typeDom.name
-            : util.getText(node) || getAnonymousName());
-
+          const name = getDeclName(util.getText(node) || getAnonymousName());
           typeDom = dom.util.typeToDeclaration(name, typeDom);
           if (dom.util.isCanBeExportDefault(typeDom)) {
             typeDom.flags = dom.DeclarationFlags.ExportDefault;
