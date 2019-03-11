@@ -1,4 +1,27 @@
 /**
+ * Initialize a new routing Layer with given `method`, `path`, and `middleware`.
+ *
+ * @param {String|RegExp} path Path string or regular expression.
+ * @param {Array} methods Array of HTTP verbs.
+ * @param {Array} middleware Layer callback/middleware or series of.
+ * @param {Object=} opts
+ * @param {String=} opts.name route name
+ * @param {String=} opts.sensitive case sensitive (default: false)
+ * @param {String=} opts.strict require the trailing slash (default: false)
+ * @returns {Layer}
+ * @private
+ */
+declare class Layer {
+  constructor(path: string | RegExp, methods: any[], middleware: any[], opts: any);
+  opts: any;
+  name: any;
+  methods: any;
+  paramNames: any;
+  stack: any;
+  path: any;
+  regexp: any;
+}
+/**
  * Create a new router.
  *
  * @example
@@ -157,7 +180,7 @@ declare class Router {
    * @param {String} name
    * @returns {Layer|false}
    */
-  route(name: string): any;
+  route(name: string): boolean | Layer;
   /**
    * Run middleware for named route parameters. Useful for auto-loading or
    * validation.

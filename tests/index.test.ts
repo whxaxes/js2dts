@@ -81,6 +81,18 @@ describe('index.test.ts', () => {
     it('normal#jsdoc.1', async () => {
       await checkDts('normal/jsdoc.1');
     });
+
+    it('normal#esm', async () => {
+      await checkDts('normal/esm');
+    });
+
+    it('normal#esm.1', async () => {
+      await checkDts('normal/esm.1');
+    });
+
+    it('normal#esm.2', async () => {
+      await checkDts('normal/esm.2');
+    });
   });
 
   describe('plugin', () => {
