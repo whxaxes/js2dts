@@ -1,4 +1,4 @@
-import { Node, JSDoc } from 'typescript/lib/typescript';
+import { Node, JSDoc } from 'typescript';
 import * as DistUtil from '../../../../dist/util';
 import * as ModIndex from './mod/index';
 import * as egg_1 from 'egg';
