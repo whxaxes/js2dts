@@ -1035,21 +1035,29 @@ export function create(file: string, options?: CreateOptions) {
       let typeDom = getTypeDom(typeNode) || dom.type.any;
       if (env.exportFlags & ExportFlags.Export) {
         if (name === 'default') {
-          const name = dom.util.isNamedDeclarationBase(typeDom)
+          const name = getDeclName(dom.util.isNamedDeclarationBase(typeDom)
             ? typeDom.name
-            : util.getText(node) || getAnonymousName();
+            : util.getText(node) || getAnonymousName());
 
           typeDom = dom.util.typeToDeclaration(name, typeDom);
           if (dom.util.isCanBeExportDefault(typeDom)) {
             typeDom.flags = dom.DeclarationFlags.ExportDefault;
           } else {
-            if (dom.util.isConstDeclaration(typeDom) && dom.util.isTypeofReference(typeDom.type)) {
+            if (dom.util.isConstDeclaration(typeDom)) {
               // make export default simplify
-              const tds = env.declaration.fragment.filter(member => (
-                dom.util.isNamedDeclarationBase(member) && typeDom.type.type.name === member.name
-              ));
+              const name = dom.util.isTypeofReference(typeDom.type)
+                ? typeDom.type.type.name
+                : (
+                  dom.util.isNamedTypeReference(typeDom.type)
+                    ? typeDom.type.name
+                    : undefined
+                );
 
-              if (tds.length === 1 && dom.util.isCanBeExportDefault(tds[0])) {
+              const tds = name ? env.declaration.fragment.filter(member => (
+                dom.util.isNamedDeclarationBase(member) && name === member.name
+              )) : undefined;
+
+              if (tds && tds.length === 1 && dom.util.isCanBeExportDefault(tds[0])) {
                 tds[0].flags! |= dom.DeclarationFlags.ExportDefault;
                 return;
               }
