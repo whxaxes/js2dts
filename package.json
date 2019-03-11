@@ -57,6 +57,7 @@
     "egg": "^2.15.1",
     "globby": "^8.0.1",
     "jest": "^23.6.0",
+    "reselect": "^4.0.0",
     "ts-jest": "^23.10.5",
     "tslint": "^5.9.1",
     "tslint-config-egg": "^1.0.0"

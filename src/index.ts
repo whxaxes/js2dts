@@ -883,7 +883,11 @@ export function getModNameByPath(fileName: string) {
     const name = result.pkgInfo.name;
     const modName = name.startsWith(TYPE_ROOT) ? name.substring(TYPE_ROOT.length) : name;
     const modPath = fileName.substring(result.dir.length + 1);
-    if (modPath === 'index.d.ts' || result.pkgInfo.types === modPath) {
+    if (
+      (result.pkgInfo.main && path.basename(result.pkgInfo.main, '.js') === path.basename(modPath, '.d.ts')) ||
+      (!result.pkgInfo.main && modPath === 'index.d.ts') ||
+      result.pkgInfo.types === modPath
+    ) {
       return modName;
     }
 

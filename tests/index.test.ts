@@ -85,6 +85,10 @@ describe('index.test.ts', () => {
     it('normal#esm', async () => {
       await checkDts('normal/esm');
     });
+
+    it('normal#esm.1', async () => {
+      await checkDts('normal/esm.1');
+    });
   });
 
   describe('plugin', () => {
