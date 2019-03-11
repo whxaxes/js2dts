@@ -948,8 +948,8 @@ export function createVariableDeclaration(node: ts.VariableDeclaration, name?: s
 
 // get decl name
 export function getDeclName(name: string): string {
+  name = dom.reservedWords.includes(name) ? `_${name}` : name;
   if (env.publicNames[name] === undefined) {
-    name = dom.reservedWords.includes(name) ? `_${name}` : name;
     env.publicNames[name] = 0;
     return name;
   } else {
