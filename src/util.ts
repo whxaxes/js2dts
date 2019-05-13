@@ -24,7 +24,7 @@ export function tryFindDeclarationByName(sourceFile: ts.SourceFile, name: ts.Ent
 
 export function formatName(name: string, upper?: boolean) {
   name = name
-    .replace(/[\/\\._-][a-z]/gi, s => s.substring(1).toUpperCase())
+    .replace(/[\/\\.\@_-][a-z]/gi, s => s.substring(1).toUpperCase())
     .replace(/\/|\\|\./g, '');
   return upper
     ? (name[0].toUpperCase() + name.substring(1))
