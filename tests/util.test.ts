@@ -1,7 +1,7 @@
 import { formatName } from '../dist/util';
 
 describe('util.test.ts', () => {
-  describe.only('formatName', () => {
+  describe('formatName', () => {
     it('should format normal package names properly', () => {
       expect(formatName('JS2DTS')).toEqual('JS2DTS');
       expect(formatName('js2dts')).toEqual('js2dts');
