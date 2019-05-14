@@ -1,6 +1,6 @@
 {
   "name": "js2dts",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "dts generator for js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,7 +13,8 @@
     "build:w": "npm run build -- -w",
     "test": "npm run build && jest --no-watchman",
     "cov": "npm run test -- --coverage",
-    "ci": "tsc && jest --coverage --no-watchman"
+    "ci": "tsc && jest --coverage --no-watchman",
+    "prepublish": "npm run build"
   },
   "repository": {
     "type": "git",
