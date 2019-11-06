@@ -21,7 +21,8 @@
 Generate dts for javascript
 
 
-> TS has support generating d.ts for js by flags(`allowJs` and `declarations`) in [version 3.7](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#--declaration-and---allowjs) . So this project will not maintained anymore.
+> TS has support generating d.ts for js by flags(`allowJs` and `declarations`) in [version 3.7](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#--declaration-and---allowjs) . So this project will not maintained anymore. ( eg. `tsc --allowJs --declaration --emitDeclarationOnly myfile.js` )
+
 
 
 ## Install
